@@ -11,9 +11,11 @@ without skipping data integrity, timestamp discipline, or risk controls.
 - Phase 1: Complete after remediation.
 - Phase 2A: Offline collector contracts, deterministic parsers, lifecycle state
   machine, session manifest model, and fixture tests implemented.
+- Phase 2B: Bounded live public Coinbase and Kraken WebSocket collectors implemented
+  with in-memory dry-run sinks and opt-in smoke tests.
 
-No live WebSocket collectors, datasets, predictive models, fair-value models,
-backtests, trading policies, or execution simulators have been implemented.
+No persistent datasets, predictive models, fair-value models, backtests, trading
+policies, or execution simulators have been implemented.
 
 ## Fixed Initial Scope
 
@@ -66,10 +68,12 @@ python -m pip install -e ".[dev]"
 ```bash
 python -m cross_venue --help
 python -m cross_venue --version
+python -m cross_venue smoke-collect --venue coinbase --duration-seconds 30 --max-messages 500 --public-only --no-write
+python -m cross_venue smoke-collect --venue kraken --duration-seconds 30 --max-messages 500 --public-only --no-write
 ```
 
-The CLI intentionally exposes no live collection, model training, backtest, or trading
-commands during Phase 2A.
+The smoke collector is bounded, public-only, and no-write. It prints an in-memory
+summary and does not persist raw frames or normalized events.
 
 ## Common Commands
 
@@ -129,10 +133,9 @@ python -m pip check
 
 ## Next Phase
 
-The next Phase 2 increment should wrap the offline contracts with bounded public
-WebSocket collection for the documented Coinbase and Kraken trade/top-of-book channels,
-plus raw archive writes and data-quality reporting. It should not introduce model
-training, backtesting, fair-value estimation, or live trading.
+Phase 2C should implement raw archival, manifest persistence, and data-quality reporting
+around the bounded public collectors. It should not introduce model training,
+backtesting, fair-value estimation, or live trading.
 
 Local learning notes may exist at `docs/learning_log.md` and
 `docs/interview_guide.md`; they are intentionally ignored and not pushed to GitHub.

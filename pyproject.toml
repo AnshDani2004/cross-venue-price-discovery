@@ -40,9 +40,10 @@ packages = ["src/cross_venue"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config -m 'not live'"
 markers = [
   "integration: tests that require network, exchange sandboxes, or local services",
+  "live: opt-in public exchange smoke tests",
   "property: property-based tests",
   "regression: locked behavior tests for previously fixed issues",
 ]

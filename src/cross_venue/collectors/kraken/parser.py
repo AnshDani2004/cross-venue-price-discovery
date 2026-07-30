@@ -109,6 +109,17 @@ def parse_kraken_message(
                 payload_summary="kraken heartbeat",
             )
         )
+    if channel == "status":
+        return ParseResult(
+            control=ParsedControlMessage(
+                venue=Exchange.KRAKEN,
+                channel="status",
+                message_type=message_type,
+                collector_session_id=collector_session_id,
+                local_receipt_ts=local_receipt_ts,
+                payload_summary="kraken status",
+            )
+        )
     return ParseResult(
         unsupported=UnsupportedPublicMessage(
             venue=Exchange.KRAKEN,

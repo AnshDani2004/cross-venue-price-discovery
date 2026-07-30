@@ -152,7 +152,7 @@ def test_raw_message_envelope_rejects_unknown_fields_and_sensitive_payload() -> 
             venue_symbol="BTC-USD",
             channel="heartbeat",
             message_type="heartbeat",
-            payload={"type": "heartbeat", "api_key": "not-allowed"},
+            payload={"type": "heartbeat", "api_key": "not-allowed"},  # pragma: allowlist secret
             local_receipt_ts=aware_ts(),
             collector_session_id="session-1",
             schema_version="0.1.0",

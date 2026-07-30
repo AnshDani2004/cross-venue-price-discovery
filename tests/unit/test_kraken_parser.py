@@ -149,7 +149,7 @@ def test_kraken_unsupported_valid_message_is_explicit() -> None:
     )
 
     assert result.unsupported is not None
-    assert result.unsupported.channel == "status"
+    assert result.unsupported.channel == "instruments"
 
 
 @pytest.mark.parametrize(

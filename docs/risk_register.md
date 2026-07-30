@@ -39,3 +39,10 @@ Low, Medium, or High.
 | R-ENG-006 | Engineering | Invalid configuration silently changes research scope. | Medium | High | Use strict typed configuration with unknown fields rejected. | Open | 0+ | Engineering |
 | R-ENG-007 | Engineering | Parser failures are silently ignored. | Medium | High | Validate schemas and log parser failures with data-quality flags. | Open | 3+ | Engineering |
 | R-ENG-008 | Engineering | Generated files are committed to Git. | Low | Medium | Ignore raw data, generated reports, models, logs, caches, and database files. | Open | 0+ | Engineering |
+| R-ENG-009 | Engineering | Connection instability interrupts smoke collection. | High | Medium | Use bounded reconnect attempts, visible failure reasons, and per-run counters. | Open | 2B+ | Engineering |
+| R-ENG-010 | Engineering | Reconnection storms hit exchange or CDN limits. | Medium | High | Bound retry attempts, cap backoff, and follow venue reconnect guidance. | Open | 2B+ | Engineering |
+| R-ENG-011 | Engineering | Heartbeat false positives hide stale market data. | Medium | Medium | Track last frame, last control, and last market-event monotonic times separately. | Open | 2B+ | Data |
+| R-ENG-012 | Engineering | Sink backpressure causes event loss. | Medium | High | Use bounded in-memory sink with explicit backpressure errors and no silent drops. | Open | 2B+ | Engineering |
+| R-ENG-013 | Engineering | Events are lost before persistence exists. | High | Medium | Treat Phase 2B as smoke-only and add raw archival in Phase 2C before research collection. | Open | 2C | Data |
+| R-ENG-014 | Engineering | Duplicate frames after reconnect distort counts. | Medium | Medium | Preserve raw sequence/trade IDs and add deduplication during persistent promotion. | Open | 2C+ | Data |
+| R-ENG-015 | Engineering | DNS, TLS, or local clock quality degrades collection. | Medium | High | Record connection failures, add host clock audit in manifests, and keep receipt-time ordering primary. | Open | 2C+ | Engineering |
