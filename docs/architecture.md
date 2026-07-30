@@ -61,3 +61,8 @@ must never be populated during raw data collection.
 Phase 00 defines structure and contracts only. It does not connect to exchanges, collect
 data, estimate lead-lag relationships, backtest, or report strategy performance.
 
+## Phase 01 Scope
+
+Phase 01 defines market foundations for the initial two-venue BTC spot universe. It adds
+research hypotheses and config validation, but still does not connect to exchanges or
+produce market results.

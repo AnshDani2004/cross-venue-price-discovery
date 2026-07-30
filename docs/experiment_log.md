@@ -2,5 +2,4 @@
 
 No experiments have been run.
 
-Phase 00 intentionally produces no statistical or trading conclusions.
-
+Phases 00 and 01 intentionally produce no statistical or trading conclusions.

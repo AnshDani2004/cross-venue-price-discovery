@@ -48,3 +48,13 @@
 
 Crossed books are rejected at the schema layer.
 
+## Market Foundation Terms
+
+| Term | Definition |
+| --- | --- |
+| Best bid | Highest visible buy price in a venue order book |
+| Best ask | Lowest visible sell price in a venue order book |
+| Spread | `best_ask - best_bid` |
+| Midpoint | `(best_bid + best_ask) / 2` |
+| Price discovery | Process by which new information is incorporated into prices |
+| Venue leadership | Point-in-time evidence that one venue's updates precede related updates elsewhere |

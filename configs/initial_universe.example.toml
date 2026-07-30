@@ -3,10 +3,11 @@ exchange = "coinbase"
 venue_symbol = "BTC-USD"
 base_asset = "BTC"
 quote_asset = "USD"
+market_type = "spot"
 
 [venues.kraken]
 exchange = "kraken"
 venue_symbol = "BTC/USD"
 base_asset = "BTC"
 quote_asset = "USD"
-
+market_type = "spot"

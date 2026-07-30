@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from cross_venue.config import UniverseConfig, load_universe_config
 from cross_venue.schemas import (
     BookLevel,
     EventClock,
@@ -102,3 +104,40 @@ def test_order_book_snapshot_midpoint_uses_best_prices() -> None:
 
     assert snapshot.midpoint == Decimal("100.5")
 
+
+def test_initial_universe_config_loads_required_spot_markets() -> None:
+    config = load_universe_config(Path("configs/initial_universe.example.toml"))
+
+    assert [instrument.exchange for instrument in config.instruments] == [
+        Exchange.COINBASE,
+        Exchange.KRAKEN,
+    ]
+    assert {instrument.normalized_symbol for instrument in config.instruments} == {"BTC-USD"}
+
+
+def test_initial_universe_rejects_extra_venue() -> None:
+    with pytest.raises(ValidationError, match="exactly coinbase and kraken"):
+        UniverseConfig.model_validate(
+            {
+                "venues": {
+                    "coinbase": {
+                        "exchange": "coinbase",
+                        "venue_symbol": "BTC-USD",
+                        "base_asset": "BTC",
+                        "quote_asset": "USD",
+                    },
+                    "kraken": {
+                        "exchange": "kraken",
+                        "venue_symbol": "BTC/USD",
+                        "base_asset": "BTC",
+                        "quote_asset": "USD",
+                    },
+                    "other": {
+                        "exchange": "coinbase",
+                        "venue_symbol": "ETH-USD",
+                        "base_asset": "ETH",
+                        "quote_asset": "USD",
+                    },
+                }
+            }
+        )
