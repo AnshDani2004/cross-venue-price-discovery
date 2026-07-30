@@ -30,6 +30,12 @@ from cross_venue.collectors.transport import (
 )
 from cross_venue.schemas import Exchange, MarketEventType, RawMessageEnvelope
 from cross_venue.schemas.raw import JsonValue
+from cross_venue.storage.archive_writer import (
+    ArchiveSessionContext,
+    ArchiveSummary,
+    RotatingRawArchiveWriter,
+)
+from cross_venue.storage.exceptions import ArchiveWriterError, StorageError
 
 
 class UtcNow(Protocol):
@@ -158,6 +164,7 @@ class SessionStatistics:
     venue: Exchange
     canonical_instrument: str
     venue_symbol: str
+    configured_channels: tuple[str, ...]
     session_id: str
     started_at: datetime
     frames_received: int = 0
@@ -173,6 +180,10 @@ class SessionStatistics:
     subscription_requests: int = 0
     subscription_acknowledgements: int = 0
     heartbeat_messages: int = 0
+    archive_records_enqueued: int = 0
+    archive_records_written: int = 0
+    archive_records_failed: int = 0
+    maximum_writer_queue_depth: int = 0
     first_local_receipt_ts: datetime | None = None
     last_local_receipt_ts: datetime | None = None
     first_exchange_ts: datetime | None = None
@@ -216,6 +227,7 @@ class CollectorRunSummary:
     stats: SessionStatistics
     subscription_acknowledged: bool
     stop_reason: str
+    archive_summary: ArchiveSummary | None = None
     data_persisted: bool = False
 
     @property
@@ -245,7 +257,15 @@ class CollectorRunSummary:
                 f"Exchange errors: {self.stats.exchange_errors}",
                 f"Parse errors: {self.stats.parse_errors}",
                 f"Reconnect attempts: {self.stats.reconnect_attempts}",
-                "Data persisted: no",
+                f"Data persisted: {'yes' if self.data_persisted else 'no'}",
+                (
+                    "Archive shards: "
+                    f"{len(self.archive_summary.shards) if self.archive_summary else 0}"
+                ),
+                (
+                    "Archive bytes: "
+                    f"{self.archive_summary.total_archive_bytes if self.archive_summary else 0}"
+                ),
                 f"Final state: {self.stats.final_state.value}",
                 f"Stop reason: {self.stop_reason}",
             ]
@@ -270,6 +290,7 @@ async def run_collector(
     jitter_source: Callable[[], float] = lambda: 0.0,
     uuid_factory: Callable[[], UUID] = uuid4,
     stop_event: asyncio.Event | None = None,
+    archive_writer: RotatingRawArchiveWriter | None = None,
 ) -> CollectorRunSummary:
     """Run one bounded public collector session."""
 
@@ -285,12 +306,25 @@ async def run_collector(
         venue=spec.venue,
         canonical_instrument=spec.canonical_instrument,
         venue_symbol=spec.venue_symbol,
+        configured_channels=spec.channels,
         session_id=session_id,
         started_at=started_at,
     )
     lifecycle = CollectorLifecycle()
     subscription_state = SubscriptionState(spec.expected_acknowledgements)
     stop_reason = "not started"
+    archive_summary: ArchiveSummary | None = None
+    if archive_writer is not None:
+        await archive_writer.start(
+            ArchiveSessionContext(
+                venue=spec.venue,
+                canonical_instrument=spec.canonical_instrument,
+                venue_symbol=spec.venue_symbol,
+                session_id=session_id,
+                started_at=started_at,
+                archive_schema_version="0.1.0",
+            )
+        )
 
     attempt = 0
     run_started_mono = monotonic_clock()
@@ -317,6 +351,7 @@ async def run_collector(
                 sleeper=sleeper,
                 stop_event=stop_event,
                 run_started_mono=run_started_mono,
+                archive_writer=archive_writer,
             )
             break
         except RetryableCollectorRuntimeError as exc:
@@ -337,6 +372,11 @@ async def run_collector(
             lifecycle = _fail_lifecycle(lifecycle)
             stop_reason = "terminal failure"
             break
+        except StorageError as exc:
+            stats.failure_reason = str(exc)
+            lifecycle = _fail_lifecycle(lifecycle)
+            stop_reason = "storage failure"
+            break
 
     if stats.failure_reason is None:
         if lifecycle.state == CollectorState.CREATED:
@@ -355,10 +395,23 @@ async def run_collector(
             )
     stats.final_state = lifecycle.state
     stats.ended_at = now()
+    if archive_writer is not None:
+        try:
+            archive_summary = await archive_writer.close(rotation_reason=stop_reason)
+            stats.archive_records_enqueued = archive_summary.records_enqueued
+            stats.archive_records_written = archive_summary.records_written
+            stats.archive_records_failed = archive_summary.records_failed
+            stats.maximum_writer_queue_depth = archive_summary.maximum_queue_depth
+        except ArchiveWriterError as exc:
+            stats.failure_reason = str(exc)
+            stats.final_state = CollectorState.FAILED
+            stop_reason = "archive close failure"
     return CollectorRunSummary(
         stats=stats,
         subscription_acknowledged=subscription_state.acknowledged_all,
         stop_reason=stop_reason,
+        archive_summary=archive_summary,
+        data_persisted=archive_writer is not None,
     )
 
 
@@ -376,6 +429,7 @@ async def _run_connection_attempt(
     sleeper: AsyncSleeper,
     stop_event: asyncio.Event | None,
     run_started_mono: float,
+    archive_writer: RotatingRawArchiveWriter | None,
 ) -> str:
     connection = None
     ack_deadline = monotonic() + limits.subscription_ack_timeout_seconds
@@ -430,9 +484,12 @@ async def _run_connection_attempt(
                 frame_monotonic=frame_monotonic,
                 supervisor=supervisor,
                 sleeper=sleeper,
+                archive_writer=archive_writer,
             )
     except SinkBackpressureError as exc:
         raise TerminalCollectorRuntimeError(str(exc)) from exc
+    except StorageError:
+        raise
     except asyncio.CancelledError:
         raise
     except CollectorRuntimeError:
@@ -455,8 +512,12 @@ async def _handle_frame(
     frame_monotonic: float,
     supervisor: HeartbeatSupervisor,
     sleeper: AsyncSleeper,
+    archive_writer: RotatingRawArchiveWriter | None,
 ) -> None:
     try:
+        if archive_writer is not None:
+            archive_record = archive_writer.make_record(frame, local_receipt_ts=local_receipt_ts)
+            await archive_writer.append(archive_record)
         text = decode_text_frame(frame)
         payload = json.loads(text)
         if not isinstance(payload, dict):

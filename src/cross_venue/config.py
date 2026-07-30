@@ -27,6 +27,8 @@ TimestampOrdering = Literal["receipt_time", "exchange_sequence_then_exchange_tim
 NaiveDatetimePolicy = Literal["reject"]
 TimestampPrecision = Literal["microsecond"]
 TieBreakerField = Literal["local_receipt_ts", "venue", "sequence_number", "message_type"]
+ArchiveFormat = Literal["jsonl"]
+ChecksumAlgorithm = Literal["sha256"]
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -447,3 +449,46 @@ def load_timestamp_policy_config(path: Path) -> TimestampPolicyConfig:
     """Load and validate timestamp semantics for point-in-time data handling."""
 
     return TimestampPolicyConfig.model_validate(_load_toml(path))
+
+
+class StorageConfig(BaseModel):
+    """Validated Phase 2C raw archive storage settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    archive_root: Path = Path("data/raw")
+    archive_format: ArchiveFormat = "jsonl"
+    archive_schema_version: str = Field(min_length=1)
+    writer_queue_capacity: int = Field(gt=0)
+    writer_enqueue_timeout_seconds: float = Field(gt=0)
+    flush_every_records: int = Field(gt=0)
+    flush_interval_seconds: float = Field(gt=0)
+    fsync_on_flush: bool = True
+    rotate_max_records: int = Field(gt=0)
+    rotate_max_uncompressed_bytes: int = Field(gt=0)
+    rotate_max_seconds: float = Field(gt=0)
+    checksum_algorithm: ChecksumAlgorithm = "sha256"
+    manifest_checkpoint_every_records: int = Field(gt=0)
+    manifest_checkpoint_interval_seconds: float = Field(gt=0)
+    partial_file_suffix: str = Field(min_length=1)
+
+    @field_validator("archive_root")
+    @classmethod
+    def archive_root_must_be_local(cls, value: Path) -> Path:
+        text = str(value)
+        if "://" in text:
+            raise ValueError("archive_root must be a local filesystem path")
+        return value.expanduser()
+
+    @field_validator("partial_file_suffix")
+    @classmethod
+    def partial_suffix_must_be_safe(cls, value: str) -> str:
+        if "/" in value or "\\" in value or value.strip() == "":
+            raise ValueError("partial file suffix must be safe and nonempty")
+        return value
+
+
+def load_storage_config(path: Path) -> StorageConfig:
+    """Load and validate Phase 2C storage configuration."""
+
+    return StorageConfig.model_validate(_load_toml(path))

@@ -48,6 +48,20 @@
   external network and exchange failure modes.
 - Exchange schemas may change after the 2026-07-30 documentation review.
 
+## Phase 2C
+
+- Raw archival has been validated with bounded 20-second public smoke tests only; it is
+  not long-duration stability evidence.
+- Archives preserve exact frames, but normalized dataset promotion and cross-session
+  quality gates are not implemented yet.
+- Host clock offset and jitter are not yet measured in manifests.
+- Sequence gap and duplicate detection counters are placeholders for later data-quality
+  validation.
+- Raw shards are uncompressed JSONL in Phase 2C, so longer controlled collection needs
+  disk monitoring before use.
+- Recovery handles valid JSONL prefixes in partial shards, but has not been exercised
+  against process-kill crash drills.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

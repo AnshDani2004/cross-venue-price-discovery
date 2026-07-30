@@ -7,8 +7,10 @@ import pytest
 from cross_venue.collectors.coinbase.collector import build_coinbase_runtime_spec
 from cross_venue.collectors.runtime import RunLimits, run_collector
 from cross_venue.collectors.sink import InMemoryEventSink
-from cross_venue.config import load_venue_catalog_config
+from cross_venue.config import StorageConfig, load_venue_catalog_config
 from cross_venue.schemas import Exchange, NormalizedTopOfBook, RawMessageEnvelope
+from cross_venue.storage.archive_record import RawArchiveRecord
+from cross_venue.storage.archive_writer import RotatingRawArchiveWriter
 
 
 class FakeConnection:
@@ -78,6 +80,24 @@ def _coinbase_spec():
 
 def _uuid() -> UUID:
     return UUID("00000000-0000-0000-0000-000000000001")
+
+
+def _storage_config(tmp_path: Path) -> StorageConfig:
+    return StorageConfig(
+        archive_root=tmp_path,
+        archive_schema_version="0.1.0",
+        writer_queue_capacity=10,
+        writer_enqueue_timeout_seconds=1,
+        flush_every_records=1,
+        flush_interval_seconds=1,
+        fsync_on_flush=False,
+        rotate_max_records=100,
+        rotate_max_uncompressed_bytes=1_000_000,
+        rotate_max_seconds=900,
+        manifest_checkpoint_every_records=100,
+        manifest_checkpoint_interval_seconds=10,
+        partial_file_suffix=".partial",
+    )
 
 
 @pytest.mark.asyncio
@@ -209,3 +229,33 @@ async def test_runtime_records_parse_error_without_fabricating_event() -> None:
     assert summary.stats.parse_errors == 1
     assert summary.stats.trade_events == 0
     assert summary.stats.top_of_book_events == 0
+
+
+@pytest.mark.asyncio
+async def test_runtime_archives_exact_frame_before_json_decode(tmp_path: Path) -> None:
+    connection = FakeConnection(["not-json"])
+    connector = FakeConnector([connection])
+    clock = FakeClock()
+    writer = RotatingRawArchiveWriter(storage_config=_storage_config(tmp_path))
+
+    summary = await run_collector(
+        _coinbase_spec(),
+        connector=connector,
+        sink=InMemoryEventSink(max_items=10),
+        limits=RunLimits(max_messages=1),
+        now=clock.now,
+        monotonic=clock.monotonic,
+        sleeper=clock.sleep,
+        uuid_factory=_uuid,
+        archive_writer=writer,
+    )
+
+    assert summary.stats.frames_received == 1
+    assert summary.stats.parse_errors == 1
+    assert summary.archive_summary is not None
+    assert summary.archive_summary.records_written == 1
+    shard = summary.archive_summary.shards[0]
+    shard_path = summary.archive_summary.session_paths.session_root / shard.relative_path
+    record = RawArchiveRecord.from_json_line(shard_path.read_text(encoding="utf-8"))
+    assert record.raw_frame == "not-json"
+    assert record.local_receipt_ts == datetime(2026, 7, 30, 21, 0, 2, tzinfo=UTC)
