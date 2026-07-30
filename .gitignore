@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Secrets and local configuration
+.env
+*.pem
+*.key
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Generated research artifacts and large data
+data/raw/*
+data/normalized/*
+data/features/*
+data/manifests/*
+reports/figures/*
+reports/tables/*
+reports/research_report/*
+reports/trading_report/*
+
+# Keep directory placeholders and tiny public samples.
+!data/raw/.gitkeep
+!data/normalized/.gitkeep
+!data/features/.gitkeep
+!data/manifests/.gitkeep
+!data/samples/
+!data/samples/.gitkeep
+!reports/figures/.gitkeep
+!reports/tables/.gitkeep
+!reports/research_report/.gitkeep
+!reports/trading_report/.gitkeep
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+

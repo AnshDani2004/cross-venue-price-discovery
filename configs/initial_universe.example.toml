@@ -1,0 +1,12 @@
+[venues.coinbase]
+exchange = "coinbase"
+venue_symbol = "BTC-USD"
+base_asset = "BTC"
+quote_asset = "USD"
+
+[venues.kraken]
+exchange = "kraken"
+venue_symbol = "BTC/USD"
+base_asset = "BTC"
+quote_asset = "USD"
+
