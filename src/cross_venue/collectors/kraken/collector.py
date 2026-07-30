@@ -26,6 +26,7 @@ from cross_venue.collectors.transport import WebSocketConnector, WebsocketsConne
 from cross_venue.config import VenueFeedConfig, load_venue_catalog_config
 from cross_venue.schemas import Exchange
 from cross_venue.schemas.raw import JsonValue
+from cross_venue.storage.archive_writer import RotatingRawArchiveWriter
 
 
 def build_kraken_runtime_spec(config: VenueFeedConfig) -> CollectorRuntimeSpec:
@@ -99,6 +100,7 @@ class KrakenLiveCollector:
         *,
         limits: RunLimits,
         stop_event: asyncio.Event | None = None,
+        archive_writer: RotatingRawArchiveWriter | None = None,
     ) -> CollectorRunSummary:
         """Run a bounded public collection session."""
 
@@ -108,6 +110,7 @@ class KrakenLiveCollector:
             sink=self.sink,
             limits=limits,
             stop_event=stop_event,
+            archive_writer=archive_writer,
         )
 
 

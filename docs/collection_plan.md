@@ -2,9 +2,9 @@
 
 Review date: 2026-07-30.
 
-This plan bounds Phase 2 after Phase 2B live public smoke collectors. Parser contracts,
-the live transport, lifecycle state machine, manifest model, and bounded in-memory dry
-runs exist; file writes do not.
+This plan bounds Phase 2 after Phase 2C raw archival. Parser contracts, live transport,
+lifecycle state machine, rotating raw writer, persistent manifests, quality summaries,
+validation, and partial recovery exist. Normalized dataset promotion does not.
 
 ## Phase 2A Offline Validation
 
@@ -39,6 +39,30 @@ Hard limits:
 Record for each smoke run: endpoint, subscription request sent, acknowledgement status,
 first frame time, normalized event counts, control counts, parse errors, unsupported
 messages, reconnect attempts, final state, and actual duration.
+
+## Phase 2C Bounded Persistence Smoke Procedure
+
+Run one venue at a time:
+
+```bash
+python -m cross_venue smoke-archive --venue coinbase --duration-seconds 20 --max-messages 2000
+python -m cross_venue smoke-archive --venue kraken --duration-seconds 20 --max-messages 2000
+python -m cross_venue validate-archive --session-path <session_path_under_data/raw>
+python -m cross_venue recover-session --session-path <session_path_under_data/raw>
+```
+
+Hard limits:
+
+- Maximum Phase 2C persistence smoke duration: 30 seconds.
+- Default persistence smoke duration: 20 seconds.
+- Default frame limit: 2000.
+- Live persistence tests are opt-in with `CROSS_VENUE_ENABLE_LIVE_PERSISTENCE=1`.
+- Generated archives, manifests, quality summaries, checksums, and partials stay under
+  ignored `data/raw`.
+
+Record for each archival run: session path, frame count, normalized event counts, parser
+errors, reconnect attempts, shard count, archive bytes, checksum status, partial count,
+manifest path, quality summary path, and validation status.
 
 ## Pilot Sessions
 

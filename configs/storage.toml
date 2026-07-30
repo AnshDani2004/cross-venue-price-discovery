@@ -1,0 +1,15 @@
+archive_root = "data/raw"
+archive_format = "jsonl"
+archive_schema_version = "0.1.0"
+writer_queue_capacity = 10000
+writer_enqueue_timeout_seconds = 2
+flush_every_records = 100
+flush_interval_seconds = 1
+fsync_on_flush = true
+rotate_max_records = 100000
+rotate_max_uncompressed_bytes = 134217728
+rotate_max_seconds = 900
+checksum_algorithm = "sha256"
+manifest_checkpoint_every_records = 1000
+manifest_checkpoint_interval_seconds = 10
+partial_file_suffix = ".partial"

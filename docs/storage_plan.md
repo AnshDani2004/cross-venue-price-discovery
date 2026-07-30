@@ -2,16 +2,19 @@
 
 Review date: 2026-07-30.
 
-This plan defines local research storage before persistent collectors are implemented.
-Phase 2B creates raw envelopes, parser outputs, session statistics, and dry-run summaries
-in memory only. It does not write raw files, manifest files, or normalized datasets.
-
-Phase 2C is the first phase allowed to add raw archival and manifest persistence.
+This plan defines local research storage after Phase 2C raw archival. Phase 2C persists
+exact public WebSocket frames, per-session manifests, quality summaries, and checksums.
+It still does not write normalized datasets, features, labels, model artifacts, or
+trading outputs.
 
 ## Directory Layout
 
 ```text
-data/raw/venue=<venue>/channel=<channel>/date=<YYYY-MM-DD>/session=<session_id>/
+data/raw/venue=<venue>/instrument=<canonical_instrument>/date=<YYYY-MM-DD>/session=<session_id>/
+  raw/part-00000.jsonl
+  raw/part-00000.jsonl.sha256
+  manifest/session_manifest.json
+  quality/quality_summary.json
 data/normalized/event_type=<event_type>/venue=<venue>/date=<YYYY-MM-DD>/
 data/features/dataset=<dataset_name>/version=<schema_version>/
 data/manifests/date=<YYYY-MM-DD>/
@@ -23,25 +26,26 @@ All generated data directories remain ignored by Git.
 
 | Layer | Format | Compression | Notes |
 | --- | --- | --- | --- |
-| Raw payloads | JSON Lines | gzip or zstd | Preserve one venue message per line plus receipt metadata. |
+| Raw payloads | JSON Lines | none in Phase 2C | Preserve one exact text frame or Base64 binary frame per line plus receipt metadata. |
 | Normalized events | Parquet | zstd | Typed columns matching `docs/data_dictionary.md`. |
 | Features and labels | Parquet | zstd | Versioned by schema and feature definition. |
 | Manifests | JSON or TOML | none | Human-reviewable checksums and collection summaries. |
 
 ## Integrity Controls
 
-- Compute SHA-256 checksums for raw and normalized files.
+- Compute SHA-256 checksums for finalized raw shards.
 - Store row counts and min/max timestamps per partition.
-- Store config checksums next to each session manifest.
+- Store session counters, shard metadata, and checksum status in each session manifest.
 - Validate that normalized files trace back to raw payload references.
 - Never overwrite a raw file in place; create a new session or rotation file.
-- Reject credential-like keys in raw public payload envelopes before any future archive
-  write.
+- Archive exact raw frames before JSON decoding; never reconstruct raw archives from
+  decoded dictionaries.
+- Keep `.partial` files recoverable and visible if a session is interrupted.
 
 ## Partitioning Rules
 
-Partition by venue, channel, event type, date, and session ID. Avoid partitioning by
-high-cardinality fields such as trade ID or message sequence.
+Partition raw archives by venue, canonical instrument, UTC date, and session ID. Avoid
+partitioning by high-cardinality fields such as trade ID or message sequence.
 
 ## Promotion Rules
 

@@ -15,3 +15,6 @@
 - Add Phase 2B bounded public WebSocket collectors with injectable transport, immediate
   receipt timestamps, heartbeat supervision, bounded retry, in-memory dry-run sink,
   CLI smoke runs, and opt-in live smoke tests.
+- Add Phase 2C exact raw archival with bounded writer queues, rotating JSONL shards,
+  SHA-256 sidecars, persistent manifests, quality summaries, validation/recovery CLI
+  commands, offline tests, and opt-in live persistence smokes.

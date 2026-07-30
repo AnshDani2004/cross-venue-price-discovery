@@ -77,6 +77,24 @@ Public WebSocket
   -> concise no-write summary
 ```
 
+## Phase 2C Raw Archival Flow
+
+Phase 2C adds opt-in persistence around the same bounded public collectors. Receipt
+timestamp capture remains immediately after `recv()` and before JSON decoding.
+
+```text
+Public WebSocket
+  -> receive frame
+  -> immediate local_receipt_ts capture
+  -> exact raw archive record
+  -> bounded writer queue
+  -> rotating JSONL shard
+  -> SHA-256 sidecar
+  -> persistent manifest and quality summary
+  -> archive validation or partial recovery
+  -> existing JSON decode and parser path
+```
+
 ## Timestamp Contract
 
 Every event must preserve:
@@ -120,8 +138,8 @@ produce market results.
 
 ## Phase 02 Boundary
 
-Phase 2B implements bounded live public collection for the documented trade and
-top-of-book channels only. Raw archive writes, persistent manifests, long-duration
-stability evidence, and quality reports remain future Phase 2C work. Phase 2 must not
+Phase 2C implements bounded raw archival for the documented public trade and top-of-book
+channels only. Long-duration stability evidence, normalized dataset promotion, feature
+engineering, labels, models, and trading simulation remain future work. Phase 2 must not
 add authenticated exchange clients, order submission, backtests, model training,
 fair-value estimation, or trading strategy logic.

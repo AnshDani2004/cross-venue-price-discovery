@@ -13,8 +13,11 @@ without skipping data integrity, timestamp discipline, or risk controls.
   machine, session manifest model, and fixture tests implemented.
 - Phase 2B: Bounded live public Coinbase and Kraken WebSocket collectors implemented
   with in-memory dry-run sinks and opt-in smoke tests.
+- Phase 2C: Exact raw WebSocket archival, rotating JSONL shards, SHA-256 sidecars,
+  persistent manifests, quality summaries, validation, recovery, and opt-in persistence
+  smoke tests implemented.
 
-No persistent datasets, predictive models, fair-value models, backtests, trading
+No normalized datasets, predictive models, fair-value models, backtests, trading
 policies, or execution simulators have been implemented.
 
 ## Fixed Initial Scope
@@ -70,10 +73,15 @@ python -m cross_venue --help
 python -m cross_venue --version
 python -m cross_venue smoke-collect --venue coinbase --duration-seconds 30 --max-messages 500 --public-only --no-write
 python -m cross_venue smoke-collect --venue kraken --duration-seconds 30 --max-messages 500 --public-only --no-write
+python -m cross_venue smoke-archive --venue coinbase --duration-seconds 20 --max-messages 2000
+python -m cross_venue validate-archive --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
+python -m cross_venue recover-session --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
 ```
 
 The smoke collector is bounded, public-only, and no-write. It prints an in-memory
-summary and does not persist raw frames or normalized events.
+summary and does not persist raw frames or normalized events. The `smoke-archive`
+command is the explicit opt-in persistence path; it writes exact raw frames, manifests,
+quality summaries, and checksums under ignored `data/raw`.
 
 ## Common Commands
 
@@ -133,8 +141,8 @@ python -m pip check
 
 ## Next Phase
 
-Phase 2C should implement raw archival, manifest persistence, and data-quality reporting
-around the bounded public collectors. It should not introduce model training,
+Phase 2D should validate data quality over controlled collection windows before any
+feature engineering or research modeling begins. It should not introduce model training,
 backtesting, fair-value estimation, or live trading.
 
 Local learning notes may exist at `docs/learning_log.md` and

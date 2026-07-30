@@ -2,9 +2,28 @@
 
 Review date: 2026-07-30.
 
-This dictionary defines the Phase 2A offline public market-data contracts. The models
-validate already-received payloads and normalized parser outputs only; no live collector
-or storage writer is implemented yet.
+This dictionary defines the public market-data contracts through Phase 2C. The raw
+archive stores exact received WebSocket frames plus collection metadata; parser envelopes
+and normalized events remain typed and validated separately.
+
+## Raw Archive Record
+
+| Field | Type | Unit | Required | Source | Valid Range / Values | Missing Behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `archive_schema_version` | string | none | Yes | Generated | Starts at `0.1.0` | Reject record |
+| `record_index` | integer | ordinal | Yes | Writer | Monotonic from 0 within session | Reject or fail validation |
+| `collector_session_id` | string | none | Yes | Generated | Non-empty stable ID per collector run | Reject record |
+| `venue` | enum | none | Yes | Generated from config | `coinbase`, `kraken` | Reject record |
+| `canonical_instrument` | string | none | Yes | Generated from config | `BTC-USD` | Reject record |
+| `venue_symbol` | string | none | Yes | Venue/config | `BTC-USD`, `BTC/USD` | Reject record |
+| `local_receipt_ts` | timestamp | UTC | Yes | Collector runtime | Captured immediately after `recv()` before JSON decode | Reject record |
+| `frame_type` | enum | none | Yes | Transport | `text`, `binary` | Reject record |
+| `frame_encoding` | enum | none | Yes | Writer | `utf-8` for text, `base64` for binary | Reject record |
+| `raw_frame` | string | bytes/text | Yes | Transport | Exact text frame or reversible Base64 binary bytes | Reject record |
+| `raw_frame_byte_length` | integer | bytes | Yes | Writer | Original frame byte length | Reject record |
+| `message_type` | string/null | none | Optional | Future classifier | Non-empty when known | Preserve null |
+| `source_channel` | string/null | none | Optional | Future classifier | Non-empty when known | Preserve null |
+| `exchange_ts` | timestamp/null | UTC | Optional | Future classifier | Timezone-aware when known | Preserve null |
 
 ## Raw Message Envelope
 
