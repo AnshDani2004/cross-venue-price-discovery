@@ -27,4 +27,3 @@ class InstrumentId(BaseModel):
         """Return the venue-independent symbol used in research outputs."""
 
         return f"{self.base_asset.upper()}-{self.quote_asset.upper()}"
-

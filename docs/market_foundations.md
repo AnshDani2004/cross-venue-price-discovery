@@ -115,4 +115,3 @@ Phase 01 is complete when:
 - Hypotheses are stated as testable claims, not results.
 - The universe configuration can be parsed into validated instrument identifiers.
 - Tests prove the initial universe contains exactly Coinbase and Kraken BTC spot markets.
-

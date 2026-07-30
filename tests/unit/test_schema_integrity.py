@@ -78,6 +78,34 @@ def test_clock_rejects_local_receipt_before_exchange_timestamp() -> None:
         )
 
 
+def test_clock_rejects_timezone_naive_timestamps() -> None:
+    exchange_ts = datetime(2026, 7, 30, 12, 0, 0)  # noqa: DTZ001
+
+    with pytest.raises(ValidationError, match="exchange_ts must be timezone-aware"):
+        EventClock(
+            exchange_ts=exchange_ts,
+            local_receipt_ts=exchange_ts + timedelta(milliseconds=1),
+            processing_ts=exchange_ts + timedelta(milliseconds=2),
+        )
+
+
+def test_clock_accepts_equal_timezone_aware_timestamps() -> None:
+    timestamp = datetime(2026, 7, 30, 12, 0, 0, 123456, tzinfo=UTC)
+
+    clock = EventClock(
+        exchange_ts=timestamp,
+        local_receipt_ts=timestamp,
+        processing_ts=timestamp,
+        decision_ts=timestamp,
+        simulated_order_submission_ts=timestamp,
+        simulated_order_arrival_ts=timestamp,
+        simulated_fill_ts=timestamp,
+    )
+
+    assert clock.exchange_ts.microsecond == 123456
+    assert clock.simulated_order_arrival_ts == timestamp
+
+
 def test_order_book_snapshot_rejects_crossed_book() -> None:
     with pytest.raises(ValidationError, match="best bid"):
         OrderBookSnapshot(

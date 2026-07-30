@@ -80,4 +80,3 @@ class OrderBookSnapshot(BaseModel):
         best_bid = max(level.price for level in self.bids)
         best_ask = min(level.price for level in self.asks)
         return (best_bid + best_ask) / Decimal("2")
-

@@ -48,4 +48,3 @@ Planning notes:
 - Do not distribute restricted raw data.
 - Preserve raw data manifests so every research table is traceable to source files and
   collection intervals.
-
