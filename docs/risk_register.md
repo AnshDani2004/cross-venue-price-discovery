@@ -19,7 +19,7 @@ Low, Medium, or High.
 | R-RES-002 | Research | Temporal leakage from random row splits. | Medium | High | Use chronological splits and untouched final holdout. | Open | 6+ | Research |
 | R-RES-003 | Research | Overlapping labels create overstated confidence. | High | Medium | Use block/day bootstrap or Newey-West style corrections. | Open | 6+ | Research |
 | R-RES-004 | Research | Overfitting from repeated model or threshold changes. | Medium | High | Maintain experiment log and separate exploratory from confirmatory analysis. | Open | 6+ | Research |
-| R-RES-005 | Research | Multiple testing creates false discoveries. | High | High | Predeclare primary horizons and apply Holm or FDR controls where appropriate. | Open | 1+ | Research |
+| R-RES-005 | Research | Multiple testing creates false discoveries. | High | High | Predeclare primary horizons and apply Benjamini-Hochberg FDR control at 5% for the primary test family. | Open | 1+ | Research |
 | R-RES-006 | Research | Short sample periods fail across regimes. | High | Medium | Collect across time-of-day, weekday/weekend, and volatility regimes before conclusions. | Open | 2+ | Research |
 | R-RES-007 | Research | Regime dependence hides unstable effects. | Medium | High | Report performance by volatility/liquidity regime. | Open | 6+ | Research |
 | R-RES-008 | Research | PnL-driven model selection creates misleading research. | Medium | High | Freeze research models before trading-rule optimization. | Open | 7+ | Research |

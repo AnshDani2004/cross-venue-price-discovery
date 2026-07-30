@@ -7,8 +7,8 @@ without skipping data integrity, timestamp discipline, or risk controls.
 
 ## Current Status
 
-- Phase 0: In remediation.
-- Phase 1: In remediation.
+- Phase 0: Complete after remediation.
+- Phase 1: Complete after remediation.
 - Phase 2: Not started.
 
 No collectors, datasets, predictive models, fair-value models, backtests, trading
@@ -21,6 +21,8 @@ policies, or execution simulators have been implemented.
 - Venue 1: Coinbase
 - Venue 2: Kraken
 - Initial data focus: trades and top of book
+- Coinbase channels: `matches`, `ticker`, and `heartbeat`
+- Kraken channels: `trade` and `ticker` with `event_trigger=bbo`
 
 Perpetual futures, additional assets, additional venues, neural networks, reinforcement
 learning, and live trading are out of scope for the initial phases.
@@ -113,6 +115,7 @@ python -m pip check
 ## Documentation
 
 - `docs/architecture.md`
+- `docs/collection_plan.md`
 - `docs/data_sources.md`
 - `docs/data_dictionary.md`
 - `docs/experiment_log.md`
@@ -120,6 +123,14 @@ python -m pip check
 - `docs/market_foundations.md`
 - `docs/research_protocol.md`
 - `docs/risk_register.md`
+- `docs/storage_plan.md`
+- `docs/timestamp_policy.md`
+
+## Next Phase
+
+Phase 2 should implement bounded public WebSocket collection for the documented Coinbase
+and Kraken trade/top-of-book channels, plus raw manifests and data-quality reporting. It
+should not introduce model training, backtesting, fair-value estimation, or live trading.
 
 Local learning notes may exist at `docs/learning_log.md` and
 `docs/interview_guide.md`; they are intentionally ignored and not pushed to GitHub.

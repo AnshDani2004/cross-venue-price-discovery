@@ -1,0 +1,14 @@
+timezone = "UTC"
+timezone_aware_required = true
+preserve_exchange_timestamp = true
+simulated_information_ordering = "receipt_time"
+venue_reconstruction_ordering = "exchange_sequence_then_exchange_timestamp"
+equal_timestamp_tie_breaker = [
+  "receipt_timestamp",
+  "venue",
+  "sequence_number",
+  "message_type",
+]
+clock_offset_jitter_audit_required = true
+naive_datetime_policy = "reject"
+timestamp_precision = "microsecond"
