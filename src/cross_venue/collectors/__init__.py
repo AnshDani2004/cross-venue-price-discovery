@@ -18,12 +18,29 @@ from cross_venue.collectors.exceptions import (
 )
 from cross_venue.collectors.lifecycle import CollectorLifecycle, CollectorState
 from cross_venue.collectors.manifest import SessionManifest, make_session_id
+from cross_venue.collectors.retry import RetryPolicy
+from cross_venue.collectors.runtime import (
+    CollectorRunSummary,
+    CollectorRuntimeSpec,
+    RunLimits,
+    SessionStatistics,
+    SubscriptionState,
+    run_collector,
+)
+from cross_venue.collectors.sink import InMemoryEventSink, SinkBackpressureError
+from cross_venue.collectors.supervision import HeartbeatSupervisor, InactivityTimeoutError
+from cross_venue.collectors.transport import WebSocketConnection, WebSocketConnector
 
 __all__ = [
     "CollectorError",
     "CollectorLifecycle",
+    "CollectorRunSummary",
+    "CollectorRuntimeSpec",
     "CollectorState",
     "ExchangeErrorMessage",
+    "HeartbeatSupervisor",
+    "InMemoryEventSink",
+    "InactivityTimeoutError",
     "InvalidCollectorStateTransition",
     "InvalidCollectorStateTransitionError",
     "LiveCollectorNotImplemented",
@@ -32,8 +49,16 @@ __all__ = [
     "MessageParseError",
     "ParseResult",
     "ParsedControlMessage",
+    "RetryPolicy",
+    "RunLimits",
     "SessionManifest",
+    "SessionStatistics",
+    "SinkBackpressureError",
+    "SubscriptionState",
     "UnsupportedMessageError",
     "UnsupportedPublicMessage",
+    "WebSocketConnection",
+    "WebSocketConnector",
     "make_session_id",
+    "run_collector",
 ]
