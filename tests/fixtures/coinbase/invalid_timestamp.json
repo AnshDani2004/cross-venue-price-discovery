@@ -1,0 +1,10 @@
+{
+  "type": "match",
+  "trade_id": 10,
+  "sequence": 50,
+  "time": "not-a-timestamp",
+  "product_id": "BTC-USD",
+  "size": "0.125",
+  "price": "68000.25",
+  "side": "sell"
+}

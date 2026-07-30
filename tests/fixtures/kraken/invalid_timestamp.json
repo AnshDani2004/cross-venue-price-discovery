@@ -1,0 +1,14 @@
+{
+  "channel": "ticker",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "bid": 68000.25,
+      "bid_qty": 0.5,
+      "ask": 68000.35,
+      "ask_qty": 1.1,
+      "timestamp": "not-a-timestamp"
+    }
+  ]
+}

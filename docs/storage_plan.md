@@ -2,7 +2,9 @@
 
 Review date: 2026-07-30.
 
-This plan defines local research storage before collectors are implemented.
+This plan defines local research storage before live collectors are implemented. Phase
+2A adds typed raw envelopes and session manifests, but it does not write raw files,
+manifest files, or normalized datasets.
 
 ## Directory Layout
 
@@ -31,6 +33,8 @@ All generated data directories remain ignored by Git.
 - Store config checksums next to each session manifest.
 - Validate that normalized files trace back to raw payload references.
 - Never overwrite a raw file in place; create a new session or rotation file.
+- Reject credential-like keys in raw public payload envelopes before any future archive
+  write.
 
 ## Partitioning Rules
 

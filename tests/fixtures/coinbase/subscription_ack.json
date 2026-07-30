@@ -1,0 +1,13 @@
+{
+  "type": "subscriptions",
+  "channels": [
+    {
+      "name": "matches",
+      "product_ids": ["BTC-USD"]
+    },
+    {
+      "name": "ticker",
+      "product_ids": ["BTC-USD"]
+    }
+  ]
+}

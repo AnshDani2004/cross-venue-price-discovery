@@ -7,7 +7,7 @@ sampling_method = "event_time_with_receipt_time_ordering"
 primary_baseline = "no_change_and_unconditional_response"
 data_quality_exclusions = [
   "missing_exchange_timestamp",
-  "missing_local_receipt_timestamp",
+  "missing_local_receipt_ts",
   "coinbase_sequence_gap",
   "kraken_trade_id_regression",
   "kraken_book_checksum_failure",

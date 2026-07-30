@@ -1,0 +1,10 @@
+{
+  "type": "ticker",
+  "sequence": 37475248784,
+  "product_id": "ETH-USD",
+  "best_bid": "3500.00",
+  "best_bid_size": "1.0",
+  "best_ask": "3500.10",
+  "best_ask_size": "2.0",
+  "time": "2026-07-30T21:00:00.223456Z"
+}

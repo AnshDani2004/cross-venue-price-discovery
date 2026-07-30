@@ -23,6 +23,20 @@
 - No conclusion can yet be drawn about venue leadership, latency, liquidity, or tradable
   edge.
 
+## Phase 2A
+
+- Offline parsers are validated only against deterministic fixtures, not live exchange
+  traffic.
+- No WebSocket connection loop, reconnect policy, heartbeat monitor, ping/pong handling,
+  or rate-limit behavior has been implemented.
+- `SessionManifest` is a typed contract only; no manifest file writer or checksum
+  pipeline exists yet.
+- No raw, normalized, feature, label, or report dataset has been produced.
+- Parser schemas may need revision if Coinbase or Kraken public payloads change after
+  the 2026-07-30 documentation review.
+- Local receipt timestamps are supplied by parser callers in tests; no host-clock audit
+  or latency measurement exists yet.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

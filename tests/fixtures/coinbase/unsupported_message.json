@@ -1,0 +1,9 @@
+{
+  "type": "status",
+  "products": [
+    {
+      "id": "BTC-USD",
+      "status": "online"
+    }
+  ]
+}
