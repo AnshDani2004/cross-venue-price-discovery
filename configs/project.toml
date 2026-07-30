@@ -1,0 +1,5 @@
+environment = "development"
+timezone = "UTC"
+data_directory = "data"
+report_directory = "reports"
+log_level = "INFO"

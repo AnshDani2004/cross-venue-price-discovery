@@ -12,8 +12,14 @@
 ## Phase 01
 
 - Market-foundation hypotheses are pre-analysis assumptions, not empirical findings.
-- Coinbase and Kraken symbol conventions are documented but no live message parsing has
-  been implemented.
+- Coinbase and Kraken symbol conventions, channels, endpoint choices, and timestamp fields
+  are documented but no live message parsing has been implemented.
+- Fee, tick-size, and minimum-order values are dated assumptions and must be revalidated
+  before any PnL or execution simulation.
+- Kraken full-depth book checksum handling and Coinbase `level2` reconstruction are
+  intentionally deferred.
+- Public feed timestamps may not be unique, synchronized, or directly comparable across
+  venues.
 - No conclusion can yet be drawn about venue leadership, latency, liquidity, or tradable
   edge.
 
@@ -25,3 +31,5 @@
 - Book-derived signals are unreliable without sequence and checksum validation.
 - Apparent lead-lag relationships can disappear after fees, spread, latency, and adverse
   selection.
+- Multiple-testing risk remains high until registered hypotheses, horizons, and final
+  holdout handling are enforced on real data.

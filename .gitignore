@@ -10,12 +10,17 @@ htmlcov/
 
 # Virtual environments
 .venv/
+.venv.*/
 venv/
 
 # Secrets and local configuration
 .env
 *.pem
 *.key
+
+# Logs and runtime artifacts
+*.log
+logs/
 
 # Notebooks
 .ipynb_checkpoints/
@@ -25,6 +30,11 @@ docs/learning_log.md
 docs/interview_guide.md
 
 # Generated research artifacts and large data
+*.parquet
+*.duckdb
+*.db
+models/
+artifacts/models/
 data/raw/*
 data/normalized/*
 data/features/*
@@ -33,6 +43,7 @@ reports/figures/*
 reports/tables/*
 reports/research_report/*
 reports/trading_report/*
+reports/generated/
 
 # Keep directory placeholders and tiny public samples.
 !data/raw/.gitkeep

@@ -2,49 +2,135 @@
 
 This repository is a phase-gated research project for studying how information moves
 between cryptocurrency venues, beginning with BTC spot markets on Coinbase and Kraken.
+The goal is to connect credible quantitative research to realistic simulated trading
+without skipping data integrity, timestamp discipline, or risk controls.
 
-The project connects the full workflow:
+## Current Status
 
-1. Market observation
-2. Hypothesis formation
-3. Data collection
-4. Data validation
-5. Statistical analysis
-6. Fair value estimation
-7. Trading decision
-8. Execution simulation
-9. Risk management
-10. Performance evaluation
+- Phase 0: Complete after remediation.
+- Phase 1: Complete after remediation.
+- Phase 2: Not started.
 
-No live trading is implemented or permitted. All eventual trading logic must remain
-simulation-only unless the repository objectives are explicitly changed and reviewed.
+No collectors, datasets, predictive models, fair-value models, backtests, trading
+policies, or execution simulators have been implemented.
 
-## Current Phase
+## Fixed Initial Scope
 
-Phase 00: Project foundation.
+- Asset: BTC
+- Market type: Spot
+- Venue 1: Coinbase
+- Venue 2: Kraken
+- Initial data focus: trades and top of book
+- Coinbase channels: `matches`, `ticker`, and `heartbeat`
+- Kraken channels: `trade` and `ticker` with `event_trigger=bbo`
 
-This phase creates the repository scaffold, baseline documentation, and validated event
-schemas needed before exchange collectors are implemented. It does not collect data,
-run backtests, estimate signals, or report performance.
+Perpetual futures, additional assets, additional venues, neural networks, reinforcement
+learning, and live trading are out of scope for the initial phases.
 
-## Development
+## Learning Goals
+
+Quantitative research goals:
+
+- Form falsifiable market microstructure hypotheses.
+- Preserve point-in-time data integrity.
+- Define features, labels, baselines, metrics, and validation before modeling.
+- Report negative, null, and inconclusive results honestly.
+
+Quantitative trading goals:
+
+- Separate fair-value estimation from trading decisions.
+- Account for spread, fees, latency, fills, and risk before discussing tradability.
+- Keep all execution work simulated.
+- Avoid tuning research to produce attractive PnL.
+
+## No Live Trading
+
+This repository must not submit real orders, cancel real orders, transfer funds, manage
+live positions, or require private trading credentials. Public market-data planning is
+allowed; live execution is not.
+
+## Installation
 
 The project targets Python 3.12 or newer.
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-make check
 ```
 
-## Research Discipline
+## CLI Usage
 
-The project treats timestamp integrity as a first-class constraint. Future phases must
-distinguish exchange timestamps, local receipt timestamps, processing timestamps,
-decision timestamps, simulated order submission timestamps, and simulated fill
-timestamps.
+```bash
+python -m cross_venue --help
+python -m cross_venue --version
+```
 
-Negative and inconclusive experiments belong in `docs/experiment_log.md`; they should
-not be hidden or optimized away.
+The CLI intentionally exposes no data collection, model training, backtest, or trading
+commands during Phase 0 and Phase 1.
 
+## Common Commands
+
+```bash
+make lint
+make format
+make format-check
+make typecheck
+make test
+make check
+python -m pip check
+```
+
+`make check` runs Ruff linting, Ruff format verification, mypy, and pytest.
+
+## Repository Structure
+
+```text
+configs/        Validated local configuration examples
+data/           Ignored raw, normalized, feature, manifest, and sample areas
+docs/           Architecture, research protocol, data, risk, and audit documents
+notebooks/      Exploratory and report notebooks that call production modules
+reports/        Ignored generated research and trading outputs
+scripts/        Future command wrappers
+src/            Reusable Python package code
+tests/          Unit, integration, property, regression, and fixture tests
+```
+
+## Reproduction
+
+From a clean checkout with Python 3.12:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+make check
+python -m cross_venue --help
+python -m cross_venue --version
+python -m pip check
+```
+
+## Documentation
+
+- `docs/architecture.md`
+- `docs/collection_plan.md`
+- `docs/data_sources.md`
+- `docs/data_dictionary.md`
+- `docs/experiment_log.md`
+- `docs/limitations.md`
+- `docs/market_foundations.md`
+- `docs/research_protocol.md`
+- `docs/risk_register.md`
+- `docs/storage_plan.md`
+- `docs/timestamp_policy.md`
+
+## Next Phase
+
+Phase 2 should implement bounded public WebSocket collection for the documented Coinbase
+and Kraken trade/top-of-book channels, plus raw manifests and data-quality reporting. It
+should not introduce model training, backtesting, fair-value estimation, or live trading.
+
+Local learning notes may exist at `docs/learning_log.md` and
+`docs/interview_guide.md`; they are intentionally ignored and not pushed to GitHub.

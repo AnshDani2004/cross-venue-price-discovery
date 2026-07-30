@@ -1,0 +1,21 @@
+canonical_instrument = "BTC-USD"
+initiating_venues = ["coinbase", "kraken"]
+response_horizons_ms = [100, 250, 500]
+event_threshold_ticks = 1
+target_type = "direction"
+sampling_method = "event_time_with_receipt_time_ordering"
+primary_baseline = "no_change_and_unconditional_response"
+data_quality_exclusions = [
+  "missing_exchange_timestamp",
+  "missing_local_receipt_timestamp",
+  "coinbase_sequence_gap",
+  "kraken_trade_id_regression",
+  "kraken_book_checksum_failure",
+  "crossed_or_empty_top_of_book",
+  "negative_exchange_to_receipt_latency",
+  "host_clock_offset_outlier",
+  "reconnect_warmup_interval",
+]
+random_seed = 20260730
+final_holdout_policy = "chronological_last_20_percent"
+multiple_testing_policy = "benjamini_hochberg_fdr_5pct"

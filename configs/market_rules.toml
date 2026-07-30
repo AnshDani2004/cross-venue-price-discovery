@@ -1,0 +1,25 @@
+[[rules]]
+venue_id = "coinbase"
+market_type = "spot"
+canonical_instrument = "BTC-USD"
+venue_symbol = "BTC-USD"
+maker_fee_rate = "0.0040"
+taker_fee_rate = "0.0060"
+fee_tier_assumption = "Public Coinbase Exchange outside-liquidity-program $0K-$10K trailing 30-day USD volume tier, reviewed 2026-07-30."
+tick_size = "0.01"
+minimum_order_size = "0.00000001"
+effective_date = 2026-07-30
+source = "https://help.coinbase.com/en/exchange/trading-and-funding/exchange-fees"
+
+[[rules]]
+venue_id = "kraken"
+market_type = "spot"
+canonical_instrument = "BTC-USD"
+venue_symbol = "BTC/USD"
+maker_fee_rate = "0.0025"
+taker_fee_rate = "0.0040"
+fee_tier_assumption = "Kraken Pro spot BTC/USD REST AssetPairs zero-volume tier, reviewed 2026-07-30."
+tick_size = "0.1"
+minimum_order_size = "0.00005"
+effective_date = 2026-07-30
+source = "https://api.kraken.com/0/public/AssetPairs?pair=BTCUSD"

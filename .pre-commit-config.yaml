@@ -1,4 +1,20 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--exclude-files", "^docs/audits/"]
+
   - repo: local
     hooks:
       - id: ruff
@@ -6,20 +22,23 @@ repos:
         entry: python -m ruff check
         language: system
         pass_filenames: false
-        types_or: [python, pyi]
-        args: [src, tests]
+        args: ["."]
+
+      - id: ruff-format-check
+        name: ruff format check
+        entry: python -m ruff format --check
+        language: system
+        pass_filenames: false
+        args: ["."]
 
       - id: mypy
         name: mypy
-        entry: python -m mypy
+        entry: python -m mypy src
         language: system
         pass_filenames: false
-        types_or: [python, pyi]
 
       - id: pytest
         name: pytest
         entry: python -m pytest
         language: system
         pass_filenames: false
-        types_or: [python, pyi]
-

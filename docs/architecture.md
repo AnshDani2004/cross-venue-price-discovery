@@ -51,10 +51,24 @@ Every event must preserve:
 - Processing timestamp
 - Decision timestamp
 - Simulated order submission timestamp
+- Simulated order arrival timestamp
 - Simulated fill timestamp
 
-The first three timestamps describe observation. The final three are simulation-only and
-must never be populated during raw data collection.
+The first three timestamps describe observation. The remaining timestamps are
+simulation-only and must never be populated during raw data collection. See
+`docs/timestamp_policy.md` and `configs/timestamp_policy.toml` for ordering rules.
+
+## Configuration Contracts
+
+Phase 01 has four public, validated configuration files:
+
+- `configs/project.toml`: safe project defaults for environment, paths, timezone, and log level.
+- `configs/venues.toml`: Coinbase and Kraken public WebSocket endpoints, symbols, channels,
+  timestamp fields, heartbeat policy, reconnect bounds, and documentation review dates.
+- `configs/research.toml`: registered research horizons, initiating venues, target type,
+  sampling method, baseline, exclusions, holdout policy, and multiple-testing policy.
+- `configs/market_rules.toml`: dated fee, tick-size, and minimum-order assumptions with
+  official sources.
 
 ## Phase 00 Scope
 
@@ -66,3 +80,9 @@ data, estimate lead-lag relationships, backtest, or report strategy performance.
 Phase 01 defines market foundations for the initial two-venue BTC spot universe. It adds
 research hypotheses and config validation, but still does not connect to exchanges or
 produce market results.
+
+## Phase 02 Boundary
+
+The next phase may implement public data collection for the documented trade and
+top-of-book channels only. It must not add authenticated exchange clients, order
+submission, backtests, model training, fair-value estimation, or trading strategy logic.

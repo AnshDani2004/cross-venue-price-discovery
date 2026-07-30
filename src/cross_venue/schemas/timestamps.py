@@ -25,9 +25,7 @@ class EventClock(BaseModel):
     local_receipt_ts: datetime = Field(
         description="Timestamp captured when the message reached our process."
     )
-    processing_ts: datetime = Field(
-        description="Timestamp captured after parsing and validation."
-    )
+    processing_ts: datetime = Field(description="Timestamp captured after parsing and validation.")
     decision_ts: datetime | None = Field(
         default=None,
         description="Timestamp when a simulated trading decision is made.",
@@ -35,6 +33,10 @@ class EventClock(BaseModel):
     simulated_order_submission_ts: datetime | None = Field(
         default=None,
         description="Timestamp when a simulated order would be sent.",
+    )
+    simulated_order_arrival_ts: datetime | None = Field(
+        default=None,
+        description="Timestamp when a simulated order would arrive at the venue.",
     )
     simulated_fill_ts: datetime | None = Field(
         default=None,
@@ -49,16 +51,19 @@ class EventClock(BaseModel):
             ("processing_ts", self.processing_ts),
             ("decision_ts", self.decision_ts),
             ("simulated_order_submission_ts", self.simulated_order_submission_ts),
+            ("simulated_order_arrival_ts", self.simulated_order_arrival_ts),
             ("simulated_fill_ts", self.simulated_fill_ts),
         ]
+        for timestamp_name, timestamp_value in ordered:
+            if timestamp_value is not None and timestamp_value.tzinfo is None:
+                raise ValueError(f"{timestamp_name} must be timezone-aware")
+
         previous_name = "exchange_ts"
         previous_value = self.exchange_ts
         for current_name, current_value in ordered[1:]:
             if current_value is None:
                 continue
             if current_value < previous_value:
-                raise ValueError(
-                    f"{current_name} must be greater than or equal to {previous_name}"
-                )
+                raise ValueError(f"{current_name} must be greater than or equal to {previous_name}")
             previous_name, previous_value = current_name, current_value
         return self
