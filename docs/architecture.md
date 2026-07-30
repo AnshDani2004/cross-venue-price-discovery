@@ -64,7 +64,8 @@ Phase 01 has four public, validated configuration files:
 
 - `configs/project.toml`: safe project defaults for environment, paths, timezone, and log level.
 - `configs/venues.toml`: Coinbase and Kraken public WebSocket endpoints, symbols, channels,
-  timestamp fields, heartbeat policy, reconnect bounds, and documentation review dates.
+  channel-specific timestamp/sequence/checksum fields, heartbeat policy, reconnect bounds,
+  and documentation review dates.
 - `configs/research.toml`: registered research horizons, initiating venues, target type,
   sampling method, baseline, exclusions, holdout policy, and multiple-testing policy.
 - `configs/market_rules.toml`: dated fee, tick-size, and minimum-order assumptions with

@@ -18,7 +18,7 @@ The evidence-based audit in `docs/audits/phase_00_01_completeness_audit.md` foun
 | Starting audit commit | `d545aa1 docs: add Phase 0 and Phase 1 completeness audit` |
 | Phase 0 remediation commit | `50bb132 feat: add project CLI logging and settings` |
 | Phase 1 implementation commit | `fff5d22 feat: add Phase 1 market readiness configs` |
-| Report commit | Created after this report is committed |
+| Report commit | `4bb1f2c docs: add Phase 0 and Phase 1 remediation report` |
 
 ## 3. Scope Discipline
 

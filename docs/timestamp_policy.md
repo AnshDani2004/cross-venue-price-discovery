@@ -28,7 +28,7 @@ venue reconstruction, but they are not the primary tradability clock.
 
 When timestamps are equal, order deterministically by:
 
-1. `receipt_timestamp`
+1. `local_receipt_ts`
 2. `venue`
 3. `sequence_number`
 4. `message_type`

@@ -18,6 +18,7 @@ been established.
 - Initiating event threshold: absolute one-tick midpoint move
 
 The externalized version of these choices is `configs/research.toml`.
+The timestamp-policy config uses `local_receipt_ts` as the canonical receipt-time field.
 
 ## Principal Research Questions
 

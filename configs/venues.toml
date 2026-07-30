@@ -7,15 +7,21 @@ venue_symbol = "BTC-USD"
 base_asset = "BTC"
 quote_asset = "USD"
 public_websocket_endpoint = "wss://ws-feed.exchange.coinbase.com"
-trade_channel = "matches"
-top_of_book_channel = "ticker"
 heartbeat_channel_or_policy = "heartbeat"
-exchange_timestamp_field = "time"
-sequence_field = "sequence"
 reconnect_initial_delay_seconds = 1
 reconnect_max_delay_seconds = 30
 documentation_source = "https://docs.cdp.coinbase.com/exchange/websocket-feed/channels"
 documentation_review_date = 2026-07-30
+
+[venues.trade]
+channel = "matches"
+timestamp_field = "time"
+sequence_field = "sequence"
+
+[venues.top_of_book]
+channel = "ticker"
+timestamp_field = "time"
+sequence_field = "sequence"
 
 [[venues]]
 venue_id = "kraken"
@@ -26,13 +32,18 @@ venue_symbol = "BTC/USD"
 base_asset = "BTC"
 quote_asset = "USD"
 public_websocket_endpoint = "wss://ws.kraken.com/v2"
-trade_channel = "trade"
-top_of_book_channel = "ticker"
-top_of_book_event_trigger = "bbo"
 heartbeat_channel_or_policy = "server closes inactive public connections after about one minute; send ping if idle"
-exchange_timestamp_field = "timestamp"
-sequence_field = "trade_id"
 reconnect_initial_delay_seconds = 5
 reconnect_max_delay_seconds = 60
 documentation_source = "https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker"
 documentation_review_date = 2026-07-30
+
+[venues.trade]
+channel = "trade"
+timestamp_field = "timestamp"
+sequence_field = "trade_id"
+
+[venues.top_of_book]
+channel = "ticker"
+timestamp_field = "timestamp"
+event_trigger = "bbo"

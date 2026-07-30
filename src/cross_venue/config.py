@@ -26,7 +26,7 @@ MultipleTestingPolicy = Literal["benjamini_hochberg_fdr_5pct"]
 TimestampOrdering = Literal["receipt_time", "exchange_sequence_then_exchange_timestamp"]
 NaiveDatetimePolicy = Literal["reject"]
 TimestampPrecision = Literal["microsecond"]
-TieBreakerField = Literal["receipt_timestamp", "venue", "sequence_number", "message_type"]
+TieBreakerField = Literal["local_receipt_ts", "venue", "sequence_number", "message_type"]
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -193,6 +193,18 @@ def load_project_settings(path: Path | None = None) -> ProjectSettings:
     return ProjectSettings.from_environment(base_settings=settings)
 
 
+class ChannelFeedConfig(BaseModel):
+    """Public market-data contract for one venue channel."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    channel: str = Field(min_length=1)
+    timestamp_field: str = Field(min_length=1)
+    sequence_field: str | None = Field(default=None, min_length=1)
+    checksum_field: str | None = Field(default=None, min_length=1)
+    event_trigger: TopOfBookEventTrigger | None = None
+
+
 class VenueFeedConfig(BaseModel):
     """Public market-data feed contract for one initial venue."""
 
@@ -206,12 +218,9 @@ class VenueFeedConfig(BaseModel):
     base_asset: str = Field(min_length=1)
     quote_asset: str = Field(min_length=1)
     public_websocket_endpoint: str = Field(min_length=1)
-    trade_channel: str = Field(min_length=1)
-    top_of_book_channel: str = Field(min_length=1)
-    top_of_book_event_trigger: TopOfBookEventTrigger | None = None
+    trade: ChannelFeedConfig
+    top_of_book: ChannelFeedConfig
     heartbeat_channel_or_policy: str = Field(min_length=1)
-    exchange_timestamp_field: str = Field(min_length=1)
-    sequence_field: str | None = Field(default=None, min_length=1)
     reconnect_initial_delay_seconds: int = Field(gt=0)
     reconnect_max_delay_seconds: int = Field(gt=0)
     documentation_source: str = Field(min_length=1)
@@ -235,23 +244,47 @@ class VenueFeedConfig(BaseModel):
             raise ValueError("Phase 01 venue feeds must be BTC/USD spot markets")
         if self.reconnect_initial_delay_seconds > self.reconnect_max_delay_seconds:
             raise ValueError("initial reconnect delay must not exceed max reconnect delay")
+        if self.trade.channel == self.top_of_book.channel:
+            raise ValueError("trade and top-of-book channels must be distinct")
 
         expected_by_venue = {
-            Exchange.COINBASE: ("BTC-USD", "matches", "ticker", None),
-            Exchange.KRAKEN: ("BTC/USD", "trade", "ticker", "bbo"),
+            Exchange.COINBASE: (
+                "BTC-USD",
+                ChannelFeedConfig(
+                    channel="matches",
+                    timestamp_field="time",
+                    sequence_field="sequence",
+                ),
+                ChannelFeedConfig(
+                    channel="ticker",
+                    timestamp_field="time",
+                    sequence_field="sequence",
+                ),
+            ),
+            Exchange.KRAKEN: (
+                "BTC/USD",
+                ChannelFeedConfig(
+                    channel="trade",
+                    timestamp_field="timestamp",
+                    sequence_field="trade_id",
+                ),
+                ChannelFeedConfig(
+                    channel="ticker",
+                    timestamp_field="timestamp",
+                    event_trigger="bbo",
+                ),
+            ),
         }
         expected = expected_by_venue.get(self.venue_id)
         if expected is None:
             raise ValueError("unsupported venue")
-        venue_symbol, trade_channel, top_of_book_channel, event_trigger = expected
+        venue_symbol, trade_config, top_of_book_config = expected
         if self.venue_symbol != venue_symbol:
             raise ValueError(f"{self.venue_id} venue_symbol must be {venue_symbol}")
-        if self.trade_channel != trade_channel:
-            raise ValueError(f"{self.venue_id} trade_channel must be {trade_channel}")
-        if self.top_of_book_channel != top_of_book_channel:
-            raise ValueError(f"{self.venue_id} top_of_book_channel must be {top_of_book_channel}")
-        if self.top_of_book_event_trigger != event_trigger:
-            raise ValueError(f"{self.venue_id} top_of_book_event_trigger must be {event_trigger}")
+        if self.trade != trade_config:
+            raise ValueError(f"{self.venue_id} trade channel config does not match Phase 01")
+        if self.top_of_book != top_of_book_config:
+            raise ValueError(f"{self.venue_id} top-of-book channel config does not match Phase 01")
         return self
 
 
@@ -386,7 +419,7 @@ class TimestampPolicyConfig(BaseModel):
             raise ValueError("exchange timestamps must be preserved")
         if not self.clock_offset_jitter_audit_required:
             raise ValueError("clock-offset jitter audits are required")
-        expected_tie_breaker = ("receipt_timestamp", "venue", "sequence_number", "message_type")
+        expected_tie_breaker = ("local_receipt_ts", "venue", "sequence_number", "message_type")
         if self.equal_timestamp_tie_breaker != expected_tie_breaker:
             raise ValueError("equal timestamp tie breaker must be deterministic and documented")
         return self

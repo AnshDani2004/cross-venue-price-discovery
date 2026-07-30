@@ -10,8 +10,8 @@ API is required.
 
 | Venue | Public Endpoint | Symbol | Trades | Top Of Book | Deferred |
 | --- | --- | --- | --- | --- | --- |
-| Coinbase | `wss://ws-feed.exchange.coinbase.com` | `BTC-USD` | `matches` | `ticker` best bid/ask fields | `level2` depth reconstruction |
-| Kraken | `wss://ws.kraken.com/v2` | `BTC/USD` | `trade` | `ticker` with `event_trigger=bbo` | `book` depth and checksum features |
+| Coinbase | `wss://ws-feed.exchange.coinbase.com` | `BTC-USD` | `matches`; timestamp field `time`; sequence field `sequence` | `ticker`; timestamp field `time`; sequence field `sequence` | `level2` depth reconstruction |
+| Kraken | `wss://ws.kraken.com/v2` | `BTC/USD` | `trade`; timestamp field `timestamp`; trade identifier `trade_id` | `ticker`; timestamp field `timestamp`; `event_trigger=bbo`; no sequence or checksum field | `book` depth and checksum features |
 
 The initial collector should subscribe only to trades and top of book. Depth channels are
 documented for later implementation but are not required for the first public-data
@@ -28,7 +28,7 @@ collector.
 | Trade channel | Use `matches`; record initial `last_match` behavior and later `match` updates. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Top-of-book channel | Use `ticker`; preserve `best_bid`, `best_bid_size`, `best_ask`, and `best_ask_size`. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Heartbeat | Subscribe to `heartbeat` so gaps can be detected with sequence and last trade identifiers. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
-| Sequence handling | Preserve per-product sequence numbers; gaps or out-of-order messages must flag intervals as unusable until repaired. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
+| Sequence handling | Preserve Coinbase per-product `sequence` values on configured channels; gaps or out-of-order messages must flag intervals as unusable until repaired. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
 | Rate limits | Respect documented request, burst, inbound message, and subscription limits; collector settings must remain below them. | https://docs.cdp.coinbase.com/exchange/websocket-feed/rate-limits |
 | Market rules | `BTC-USD` product endpoint currently reports `quote_increment=0.01`, `base_increment=0.00000001`, and online spot status. | https://api.exchange.coinbase.com/products/BTC-USD |
 | Fee assumption | Public low-volume Coinbase Exchange fee tier is captured as a dated assumption in `configs/market_rules.toml`. | https://help.coinbase.com/en/exchange/trading-and-funding/exchange-fees |
@@ -53,8 +53,8 @@ avoid pretending a full order book exists before sequence-gap handling is implem
 | --- | --- | --- |
 | Public WebSocket endpoint | Use `wss://ws.kraken.com/v2`. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Symbol | Use `BTC/USD` for WebSocket v2. | https://docs.kraken.com/exchange/guides/websockets/introduction |
-| Trade channel | Use `trade`; preserve side, quantity, price, trade ID, and timestamp fields. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/trade |
-| Top-of-book channel | Use `ticker` with `event_trigger=bbo`; preserve bid, bid quantity, ask, ask quantity, symbol, and timestamp fields. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker |
+| Trade channel | Use `trade`; preserve side, quantity, price, `trade_id`, and timestamp fields. `trade_id` is trade-message metadata, not a venue-wide sequence guarantee. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/trade |
+| Top-of-book channel | Use `ticker` with `event_trigger=bbo`; preserve bid, bid quantity, ask, ask quantity, symbol, and timestamp fields. Do not assign a sequence field or checksum field to Kraken ticker messages. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker |
 | Book channel | Defer `book` until checksum validation and full-depth reconstruction are implemented. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/book |
 | Timestamp semantics | Treat RFC3339 timestamps as exchange timestamps, not unique identifiers. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Connection policy | Avoid rapid reconnect loops; maintain heartbeat/ping behavior for idle connections and observe documented reconnection guidance. | https://docs.kraken.com/exchange/guides/websockets/introduction |
@@ -84,8 +84,9 @@ Minimal Phase 2 subscription examples:
 ```
 
 Kraken ambiguity to preserve in later code reviews: the `ticker` channel is appropriate
-for top-of-book research, while the `book` channel is required for depth and checksum
-work. Do not compute depth features from ticker-only data.
+for top-of-book research, while the future `book` channel would have separate checksum
+semantics. Do not compute depth features from ticker-only data, and do not treat
+`trade_id` as ticker sequencing.
 
 ## Responsible Collection Policy
 

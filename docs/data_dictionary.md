@@ -34,7 +34,7 @@ collectors. It describes contracts only; no collector is implemented in Phase 01
 | `simulated_order_arrival_ts` | timestamp/null | UTC | Simulation only | Generated | `>= simulated_order_submission_ts` | Must be null before simulation |
 | `simulated_fill_ts` | timestamp/null | UTC | Simulation only | Generated | `>= simulated_order_arrival_ts` | Must be null before simulation |
 
-Equal timestamps are ordered by `receipt_timestamp`, then `venue`, then
+Equal timestamps are ordered by `local_receipt_ts`, then `venue`, then
 `sequence_number`, then `message_type`.
 
 ## Instrument Fields
