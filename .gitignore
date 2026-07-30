@@ -20,6 +20,10 @@ venv/
 # Notebooks
 .ipynb_checkpoints/
 
+# Local learning notes
+docs/learning_log.md
+docs/interview_guide.md
+
 # Generated research artifacts and large data
 data/raw/*
 data/normalized/*
@@ -46,4 +50,3 @@ reports/trading_report/*
 .DS_Store
 .idea/
 .vscode/
-
