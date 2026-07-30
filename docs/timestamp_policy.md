@@ -38,6 +38,8 @@ The same policy is encoded in `configs/timestamp_policy.toml`.
 ## Clock Discipline
 
 - Capture local receipt time before parsing or validation.
+- Pass local receipt time into offline parsers explicitly; parsers must not call the
+  system clock.
 - Record host clock source and offset checks in collection manifests.
 - Flag negative exchange-to-receipt latency for audit; do not silently repair it.
 - Report jitter and clock-offset outliers before lead-lag analysis.

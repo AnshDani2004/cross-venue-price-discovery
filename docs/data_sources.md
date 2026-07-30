@@ -13,9 +13,10 @@ API is required.
 | Coinbase | `wss://ws-feed.exchange.coinbase.com` | `BTC-USD` | `matches`; timestamp field `time`; sequence field `sequence` | `ticker`; timestamp field `time`; sequence field `sequence` | `level2` depth reconstruction |
 | Kraken | `wss://ws.kraken.com/v2` | `BTC/USD` | `trade`; timestamp field `timestamp`; trade identifier `trade_id` | `ticker`; timestamp field `timestamp`; `event_trigger=bbo`; no sequence or checksum field | `book` depth and checksum features |
 
-The initial collector should subscribe only to trades and top of book. Depth channels are
-documented for later implementation but are not required for the first public-data
-collector.
+The Phase 2A offline parser layer supports only trades, top of book, heartbeat/control,
+subscription acknowledgement, venue error, and explicit unsupported-message handling for
+the configured public scope. Depth channels are documented for later implementation but
+are not parsed.
 
 ## Coinbase Exchange
 
@@ -46,6 +47,16 @@ Minimal Phase 2 subscription example:
 Coinbase ambiguity to preserve in later code reviews: `ticker` is easier for top of
 book, while `level2` is better for reconstructed depth. Phase 2 chooses `ticker` to
 avoid pretending a full order book exists before sequence-gap handling is implemented.
+
+### Coinbase Phase 2A Parser Coverage
+
+| Public message | Parser result | Fields consumed | Notes |
+| --- | --- | --- | --- |
+| `match`, `last_match` | `NormalizedTrade` | `trade_id`, `sequence`, `time`, `product_id`, `size`, `price`, `side` | Coinbase documents `side` as the maker side; parser maps maker `sell` to buyer aggressor and maker `buy` to seller aggressor. |
+| `ticker` | `NormalizedTopOfBook` | `sequence`, `time`, `product_id`, `best_bid`, `best_bid_size`, `best_ask`, `best_ask_size` | Parser validates strict non-crossed top of book and does not derive midpoint or spread. |
+| `heartbeat` | `ParsedControlMessage` | `type`, optional `product_id` | Preserved as control, not a market event. |
+| `subscriptions` | `ParsedControlMessage` | `type` | Preserved as control, not a market event. |
+| `error` | `ExchangeErrorMessage` | `message` | Preserved separately from parser failures. |
 
 ## Kraken Spot WebSocket V2
 
@@ -87,6 +98,16 @@ Kraken ambiguity to preserve in later code reviews: the `ticker` channel is appr
 for top-of-book research, while the future `book` channel would have separate checksum
 semantics. Do not compute depth features from ticker-only data, and do not treat
 `trade_id` as ticker sequencing.
+
+### Kraken Phase 2A Parser Coverage
+
+| Public message | Parser result | Fields consumed | Notes |
+| --- | --- | --- | --- |
+| `channel=trade` snapshot/update | `NormalizedTrade` | `symbol`, `side`, `qty`, `price`, `trade_id`, `timestamp` | Multiple trades in one payload are emitted in source order; `trade_id` is preserved on trades only. |
+| `channel=ticker` snapshot/update | `NormalizedTopOfBook` | `symbol`, `ask`, `ask_qty`, `bid`, `bid_qty`, `timestamp` | Parser expects the configured `event_trigger=bbo` subscription but does not synthesize sequence or checksum values. |
+| `channel=heartbeat` | `ParsedControlMessage` | `channel`, optional `type` | Preserved as control, not a market event. |
+| `method=subscribe` | `ParsedControlMessage` or `ExchangeErrorMessage` | `result.channel`, `result.symbol`, `success`, `error` | Failed subscription acknowledgements are exchange errors, not parse errors. |
+| `method=error` | `ExchangeErrorMessage` | `error` | Preserved separately from parser failures. |
 
 ## Responsible Collection Policy
 

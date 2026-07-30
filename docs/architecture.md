@@ -42,6 +42,22 @@ Exchange WebSocket message
   -> risk and performance reports
 ```
 
+## Phase 2A Offline Parser Flow
+
+Phase 2A implements the deterministic contract layer that sits between future public
+WebSocket clients and later storage. It does not open sockets, reconnect, write datasets,
+or promote records into research tables.
+
+```text
+Already-received public JSON payload
+  -> caller-supplied local receipt timestamp
+  -> RawMessageEnvelope
+  -> Coinbase or Kraken offline parser
+  -> ParseResult
+  -> normalized trade, normalized top-of-book, control, unsupported, or exchange error
+  -> future raw archive and SessionManifest accounting
+```
+
 ## Timestamp Contract
 
 Every event must preserve:
@@ -60,7 +76,8 @@ simulation-only and must never be populated during raw data collection. See
 
 ## Configuration Contracts
 
-Phase 01 has four public, validated configuration files:
+Phase 01 has four public, validated configuration files that Phase 2A parsers align
+with:
 
 - `configs/project.toml`: safe project defaults for environment, paths, timezone, and log level.
 - `configs/venues.toml`: Coinbase and Kraken public WebSocket endpoints, symbols, channels,
@@ -84,6 +101,8 @@ produce market results.
 
 ## Phase 02 Boundary
 
-The next phase may implement public data collection for the documented trade and
-top-of-book channels only. It must not add authenticated exchange clients, order
-submission, backtests, model training, fair-value estimation, or trading strategy logic.
+Phase 2A implements offline parser contracts for the documented trade and top-of-book
+channels only. Live public WebSocket collection, raw archive writes, reconnect behavior,
+and quality reports remain future Phase 2 work. Phase 2 must not add authenticated
+exchange clients, order submission, backtests, model training, fair-value estimation, or
+trading strategy logic.

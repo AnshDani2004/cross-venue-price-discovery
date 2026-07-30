@@ -2,7 +2,22 @@
 
 Review date: 2026-07-30.
 
-This plan bounds Phase 2 before any collector exists. It covers public market data only.
+This plan bounds Phase 2 after Phase 2A offline contracts. The parser contracts,
+lifecycle state machine, and manifest model exist; live public collection and file writes
+do not.
+
+## Phase 2A Offline Validation
+
+Before any socket is opened, Phase 2A requires:
+
+- Deterministic parser tests for hand-curated Coinbase and Kraken fixtures.
+- Caller-supplied `local_receipt_ts`; parsers must not read the system clock.
+- Explicit non-event results for heartbeats, subscription acknowledgements, unsupported
+  public messages, and exchange error messages.
+- Strict rejection of malformed numerics, missing required fields, timezone-naive
+  timestamps, locked/crossed top-of-book events, and credential-like raw payload keys.
+- A `SessionManifest` model with counters and timestamp ranges, but no manifest file
+  writer yet.
 
 ## Pilot Sessions
 
@@ -44,6 +59,7 @@ Each session manifest must include:
 
 Phase 2 can pass only after:
 
+- Offline parser contracts continue to pass against deterministic fixtures.
 - Raw public data is collected for both venues.
 - Every raw file has a manifest checksum.
 - Local receipt timestamps are captured before parsing.

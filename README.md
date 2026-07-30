@@ -9,10 +9,11 @@ without skipping data integrity, timestamp discipline, or risk controls.
 
 - Phase 0: Complete after remediation.
 - Phase 1: Complete after remediation.
-- Phase 2: Not started.
+- Phase 2A: Offline collector contracts, deterministic parsers, lifecycle state
+  machine, session manifest model, and fixture tests implemented.
 
-No collectors, datasets, predictive models, fair-value models, backtests, trading
-policies, or execution simulators have been implemented.
+No live WebSocket collectors, datasets, predictive models, fair-value models,
+backtests, trading policies, or execution simulators have been implemented.
 
 ## Fixed Initial Scope
 
@@ -67,8 +68,8 @@ python -m cross_venue --help
 python -m cross_venue --version
 ```
 
-The CLI intentionally exposes no data collection, model training, backtest, or trading
-commands during Phase 0 and Phase 1.
+The CLI intentionally exposes no live collection, model training, backtest, or trading
+commands during Phase 2A.
 
 ## Common Commands
 
@@ -128,9 +129,10 @@ python -m pip check
 
 ## Next Phase
 
-Phase 2 should implement bounded public WebSocket collection for the documented Coinbase
-and Kraken trade/top-of-book channels, plus raw manifests and data-quality reporting. It
-should not introduce model training, backtesting, fair-value estimation, or live trading.
+The next Phase 2 increment should wrap the offline contracts with bounded public
+WebSocket collection for the documented Coinbase and Kraken trade/top-of-book channels,
+plus raw archive writes and data-quality reporting. It should not introduce model
+training, backtesting, fair-value estimation, or live trading.
 
 Local learning notes may exist at `docs/learning_log.md` and
 `docs/interview_guide.md`; they are intentionally ignored and not pushed to GitHub.

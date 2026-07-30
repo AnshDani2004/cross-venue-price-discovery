@@ -2,8 +2,25 @@
 
 Review date: 2026-07-30.
 
-This dictionary defines normalized fields expected from future public market-data
-collectors. It describes contracts only; no collector is implemented in Phase 01.
+This dictionary defines the Phase 2A offline public market-data contracts. The models
+validate already-received payloads and normalized parser outputs only; no live collector
+or storage writer is implemented yet.
+
+## Raw Message Envelope
+
+| Field | Type | Unit | Required | Source | Valid Range / Values | Missing Behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `venue` | enum | none | Yes | Generated from config | `coinbase`, `kraken` | Reject envelope |
+| `canonical_instrument` | string | none | Yes | Generated from config | `BTC-USD` in Phase 2A | Reject envelope |
+| `venue_symbol` | string | none | Yes | Venue/config | `BTC-USD`, `BTC/USD` | Reject envelope |
+| `channel` | string | none | Yes | Venue/config | Configured public channel | Reject envelope |
+| `message_type` | string | none | Yes | Venue | Venue-native type or update marker | Reject envelope |
+| `payload` | JSON object | none | Yes | Venue | JSON-compatible object with no credential-like keys | Reject envelope |
+| `local_receipt_ts` | timestamp | UTC | Yes | Collector caller | Timezone-aware; captured before parsing | Reject envelope |
+| `collector_session_id` | string | none | Yes | Generated | Non-empty stable ID per collector run | Reject envelope |
+| `schema_version` | string | none | Yes | Generated | Starts at `0.1.0` | Reject envelope |
+| `exchange_ts` | timestamp/null | UTC | Optional | Venue | Timezone-aware when present | Preserve null |
+| `raw_sequence_value` | integer/string/null | sequence/id | Optional | Venue | Preserve venue value when supplied | Preserve null |
 
 ## Universal Event Metadata
 
@@ -12,15 +29,13 @@ collectors. It describes contracts only; no collector is implemented in Phase 01
 | `schema_version` | string | none | Yes | Generated | Semantic version, starting at `0.1.0` | Reject normalized event |
 | `collector_session_id` | string | none | Yes | Generated | Non-empty stable ID per collector run | Reject normalized event |
 | `venue` | enum | none | Yes | Generated from config | `coinbase`, `kraken` | Reject normalized event |
-| `canonical_instrument` | string | none | Yes | Generated from config | `BTC-USD` in Phase 01 | Reject normalized event |
+| `canonical_instrument` | string | none | Yes | Generated from config | `BTC-USD` in Phase 2A | Reject normalized event |
 | `venue_symbol` | string | none | Yes | Venue/config | `BTC-USD`, `BTC/USD` | Reject normalized event |
-| `channel` | string | none | Yes | Venue | Configured trade or top-of-book channel | Reject normalized event |
-| `message_type` | string | none | Yes | Venue | Venue-native message or update type | Reject normalized event |
-| `event_type` | enum | none | Yes | Generated | `trade`, `top_of_book`, `heartbeat`, `control` | Reject normalized event |
-| `raw_sequence` | integer/null | sequence | Optional | Venue | Non-negative when supplied | Flag if expected but missing |
-| `raw_trade_id` | string/null | none | Optional | Venue | Non-empty when supplied | Required for normalized trades if venue supplies it |
-| `data_quality_flag` | enum/list | none | Yes | Generated | `ok` or declared exclusion reason | Preserve row but exclude from primary research when not `ok` |
-| `raw_payload_ref` | string | URI/path | Yes | Generated | Points to raw archived payload | Reject analytical promotion |
+| `source_channel` | string | none | Yes | Venue/config | Configured trade or top-of-book channel | Reject normalized event |
+| `raw_message_type` | string | none | Yes | Venue | Venue-native message or update type | Reject normalized event |
+| `event_type` | enum | none | Yes | Generated | `trade`, `top_of_book` | Reject normalized event |
+| `raw_sequence_value` | integer/string/null | sequence/id | Optional | Venue | Coinbase sequence or Kraken trade ID when applicable | Preserve null |
+| `raw_checksum_value` | string/null | checksum | Optional | Venue | Non-empty when supplied | Preserve null |
 
 ## Timestamp Fields
 
@@ -28,7 +43,7 @@ collectors. It describes contracts only; no collector is implemented in Phase 01
 | --- | --- | --- | --- | --- | --- | --- |
 | `exchange_ts` | timestamp | UTC | Yes when venue supplies it | Venue | Timezone-aware; never coerced from naive datetime | Flag and exclude if absent |
 | `local_receipt_ts` | timestamp | UTC | Yes | Generated | Timezone-aware; captured before parsing | Reject normalized event |
-| `processing_ts` | timestamp | UTC | Yes | Generated | `processing_ts >= local_receipt_ts` | Reject normalized event |
+| `processing_ts` | timestamp/null | UTC | Future storage | Generated | `processing_ts >= local_receipt_ts` | Not populated in Phase 2A parser outputs |
 | `decision_ts` | timestamp/null | UTC | Simulation only | Generated | `decision_ts >= processing_ts` | Must be null before simulation |
 | `simulated_order_submission_ts` | timestamp/null | UTC | Simulation only | Generated | `>= decision_ts` | Must be null before simulation |
 | `simulated_order_arrival_ts` | timestamp/null | UTC | Simulation only | Generated | `>= simulated_order_submission_ts` | Must be null before simulation |
@@ -52,24 +67,33 @@ Equal timestamps are ordered by `local_receipt_ts`, then `venue`, then
 | Field | Type | Unit | Required | Source | Valid Range / Values | Missing Behavior |
 | --- | --- | --- | --- | --- | --- | --- |
 | `trade_id` | string | none | Yes | Venue | Non-empty | Reject trade |
-| `trade_price` | decimal | quote/base | Yes | Venue | `> 0` | Reject trade |
-| `trade_size` | decimal | base | Yes | Venue | `> 0` | Reject trade |
+| `price` | decimal | quote/base | Yes | Venue | `> 0` | Reject trade |
+| `quantity` | decimal | base | Yes | Venue | `> 0` | Reject trade |
 | `aggressor_side` | enum | none | Yes | Venue/derived | `buy`, `sell`, `unknown` | Use `unknown`; exclude signed-flow features |
-| `signed_trade_size` | decimal | base | Derived | Generated | Positive buy, negative sell, zero unknown | Null if side unknown |
+| `signed_trade_size` | decimal/null | base | Future derived | Generated | Positive buy, negative sell, zero unknown | Not populated in Phase 2A parser outputs |
 
 ## Top-Of-Book Fields
 
 | Field | Type | Unit | Required | Source | Valid Range / Values | Missing Behavior |
 | --- | --- | --- | --- | --- | --- | --- |
-| `best_bid` | decimal | quote/base | Yes | Venue | `> 0` and `< best_ask` | Reject top-of-book event |
+| `best_bid_price` | decimal | quote/base | Yes | Venue | `> 0` and `< best_ask_price` | Reject top-of-book event |
 | `best_bid_size` | decimal | base | Yes | Venue | `>= 0`; primary features require `> 0` | Flag if zero |
-| `best_ask` | decimal | quote/base | Yes | Venue | `> 0` and `> best_bid` | Reject top-of-book event |
+| `best_ask_price` | decimal | quote/base | Yes | Venue | `> 0` and `> best_bid_price` | Reject top-of-book event |
 | `best_ask_size` | decimal | base | Yes | Venue | `>= 0`; primary features require `> 0` | Flag if zero |
-| `midpoint` | decimal | quote/base | Derived | Generated | `(best_bid + best_ask) / 2` | Null if book invalid |
-| `spread` | decimal | quote/base | Derived | Generated | `best_ask - best_bid` | Null if book invalid |
-| `relative_spread` | decimal | rate | Derived | Generated | `spread / midpoint` | Null if midpoint invalid |
-| `queue_imbalance` | decimal/null | ratio | Derived | Generated | `[-1, 1]` when sizes are positive | Null if sizes unavailable |
-| `microprice` | decimal/null | quote/base | Derived | Generated | Weighted top-of-book price | Null if sizes unavailable |
+| `midpoint` | decimal/null | quote/base | Future derived | Generated | `(best_bid_price + best_ask_price) / 2` | Not populated in Phase 2A parser outputs |
+| `spread` | decimal/null | quote/base | Future derived | Generated | `best_ask_price - best_bid_price` | Not populated in Phase 2A parser outputs |
+| `relative_spread` | decimal/null | rate | Future derived | Generated | `spread / midpoint` | Not populated in Phase 2A parser outputs |
+| `queue_imbalance` | decimal/null | ratio | Future derived | Generated | `[-1, 1]` when sizes are positive | Not populated in Phase 2A parser outputs |
+| `microprice` | decimal/null | quote/base | Future derived | Generated | Weighted top-of-book price | Not populated in Phase 2A parser outputs |
+
+## Parser Non-Event Results
+
+| Field | Type | Unit | Required | Source | Valid Range / Values | Missing Behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ParsedControlMessage` | object | none | Optional | Venue parser | Heartbeats and subscription acknowledgements | Parser returns another result kind |
+| `UnsupportedPublicMessage` | object | none | Optional | Venue parser | Valid public payload outside configured Phase 2A scope | Parser returns another result kind |
+| `ExchangeErrorMessage` | object | none | Optional | Venue parser | Public exchange error/control payload | Parser returns another result kind |
+| `ParseResult.events` | tuple | events | Optional | Venue parser | One or more normalized events in source order | Exactly one result kind must be present |
 
 ## Research Label Fields
 

@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m cross_venue",
         description=(
             "Cross-venue price-discovery research utilities. "
-            "No live-trading commands are available."
+            "No live-trading or live collection commands are available in Phase 2A."
         ),
     )
     parser.add_argument(
