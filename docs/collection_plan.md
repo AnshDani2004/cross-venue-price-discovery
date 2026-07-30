@@ -2,9 +2,9 @@
 
 Review date: 2026-07-30.
 
-This plan bounds Phase 2 after Phase 2A offline contracts. The parser contracts,
-lifecycle state machine, and manifest model exist; live public collection and file writes
-do not.
+This plan bounds Phase 2 after Phase 2B live public smoke collectors. Parser contracts,
+the live transport, lifecycle state machine, manifest model, and bounded in-memory dry
+runs exist; file writes do not.
 
 ## Phase 2A Offline Validation
 
@@ -19,11 +19,32 @@ Before any socket is opened, Phase 2A requires:
 - A `SessionManifest` model with counters and timestamp ranges, but no manifest file
   writer yet.
 
+## Phase 2B Bounded Smoke Procedure
+
+Run one venue at a time:
+
+```bash
+python -m cross_venue smoke-collect --venue coinbase --duration-seconds 30 --max-messages 500 --public-only --no-write
+python -m cross_venue smoke-collect --venue kraken --duration-seconds 30 --max-messages 500 --public-only --no-write
+```
+
+Hard limits:
+
+- Maximum Phase 2B smoke duration: 120 seconds.
+- Default smoke duration: 30 seconds.
+- Default frame limit: 500.
+- No output file, database, or raw archive option exists.
+- Live smoke tests are opt-in with `CROSS_VENUE_ENABLE_LIVE_SMOKE=1`.
+
+Record for each smoke run: endpoint, subscription request sent, acknowledgement status,
+first frame time, normalized event counts, control counts, parse errors, unsupported
+messages, reconnect attempts, final state, and actual duration.
+
 ## Pilot Sessions
 
 | Session | Duration | Venues | Channels | Purpose |
 | --- | ---: | --- | --- | --- |
-| Connectivity smoke | 5 minutes | Coinbase, Kraken | Heartbeat/control plus configured public channels | Verify subscriptions, receipt timestamps, and raw archive writes. |
+| Connectivity smoke | 30 seconds per venue | Coinbase, Kraken | Heartbeat/control plus configured public channels | Verify subscriptions, receipt timestamps, parser reuse, and no-write summaries. |
 | Short pilot | 30 minutes | Coinbase, Kraken | Trades and top of book | Estimate message rates, disk usage, schema failures, and reconnect behavior. |
 | Research pilot | 6 hours | Coinbase, Kraken | Trades and top of book | Validate manifests, data-quality reports, and event construction. |
 

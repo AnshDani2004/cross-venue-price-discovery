@@ -58,6 +58,25 @@ Already-received public JSON payload
   -> future raw archive and SessionManifest accounting
 ```
 
+## Phase 2B Live Public Collector Flow
+
+Phase 2B wraps the offline parser contracts with bounded public WebSocket transport. It
+still does not write raw files, normalized datasets, manifests, features, labels, models,
+or trading outputs.
+
+```text
+Public WebSocket
+  -> injectable transport
+  -> receive frame
+  -> immediate local_receipt_ts capture
+  -> safe JSON decode
+  -> RawMessageEnvelope in memory
+  -> existing venue parser
+  -> bounded in-memory sink
+  -> in-memory session statistics
+  -> concise no-write summary
+```
+
 ## Timestamp Contract
 
 Every event must preserve:
@@ -101,8 +120,8 @@ produce market results.
 
 ## Phase 02 Boundary
 
-Phase 2A implements offline parser contracts for the documented trade and top-of-book
-channels only. Live public WebSocket collection, raw archive writes, reconnect behavior,
-and quality reports remain future Phase 2 work. Phase 2 must not add authenticated
-exchange clients, order submission, backtests, model training, fair-value estimation, or
-trading strategy logic.
+Phase 2B implements bounded live public collection for the documented trade and
+top-of-book channels only. Raw archive writes, persistent manifests, long-duration
+stability evidence, and quality reports remain future Phase 2C work. Phase 2 must not
+add authenticated exchange clients, order submission, backtests, model training,
+fair-value estimation, or trading strategy logic.

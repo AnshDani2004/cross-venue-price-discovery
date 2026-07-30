@@ -37,6 +37,17 @@
 - Local receipt timestamps are supplied by parser callers in tests; no host-clock audit
   or latency measurement exists yet.
 
+## Phase 2B
+
+- Live observations are bounded smoke tests only, not long-duration stability evidence.
+- No raw, normalized, manifest, feature, label, or report data is persisted.
+- Internet routing, DNS, TLS, exchange load, and local runtime scheduling are not
+  deterministic.
+- Local receipt time includes operating-system scheduling and Python runtime effects.
+- Bounded reconnection is tested offline, but live reconnection behavior depends on
+  external network and exchange failure modes.
+- Exchange schemas may change after the 2026-07-30 documentation review.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

@@ -2,9 +2,11 @@
 
 Review date: 2026-07-30.
 
-This plan defines local research storage before live collectors are implemented. Phase
-2A adds typed raw envelopes and session manifests, but it does not write raw files,
-manifest files, or normalized datasets.
+This plan defines local research storage before persistent collectors are implemented.
+Phase 2B creates raw envelopes, parser outputs, session statistics, and dry-run summaries
+in memory only. It does not write raw files, manifest files, or normalized datasets.
+
+Phase 2C is the first phase allowed to add raw archival and manifest persistence.
 
 ## Directory Layout
 

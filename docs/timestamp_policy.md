@@ -37,7 +37,8 @@ The same policy is encoded in `configs/timestamp_policy.toml`.
 
 ## Clock Discipline
 
-- Capture local receipt time before parsing or validation.
+- Capture local receipt time immediately after a WebSocket receive operation returns and
+  before JSON decoding, schema validation, logging, queue insertion, or parsing.
 - Pass local receipt time into offline parsers explicitly; parsers must not call the
   system clock.
 - Record host clock source and offset checks in collection manifests.

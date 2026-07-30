@@ -12,3 +12,6 @@
 - Add Phase 2A offline collector contracts, deterministic Coinbase/Kraken parsers,
   lifecycle and manifest models, fixture coverage, and an explicit no-live-networking
   boundary.
+- Add Phase 2B bounded public WebSocket collectors with injectable transport, immediate
+  receipt timestamps, heartbeat supervision, bounded retry, in-memory dry-run sink,
+  CLI smoke runs, and opt-in live smoke tests.

@@ -13,10 +13,10 @@ API is required.
 | Coinbase | `wss://ws-feed.exchange.coinbase.com` | `BTC-USD` | `matches`; timestamp field `time`; sequence field `sequence` | `ticker`; timestamp field `time`; sequence field `sequence` | `level2` depth reconstruction |
 | Kraken | `wss://ws.kraken.com/v2` | `BTC/USD` | `trade`; timestamp field `timestamp`; trade identifier `trade_id` | `ticker`; timestamp field `timestamp`; `event_trigger=bbo`; no sequence or checksum field | `book` depth and checksum features |
 
-The Phase 2A offline parser layer supports only trades, top of book, heartbeat/control,
+The Phase 2B live layer supports only trades, top of book, heartbeat/control,
 subscription acknowledgement, venue error, and explicit unsupported-message handling for
 the configured public scope. Depth channels are documented for later implementation but
-are not parsed.
+are not parsed or subscribed.
 
 ## Coinbase Exchange
 
@@ -31,6 +31,9 @@ are not parsed.
 | Heartbeat | Subscribe to `heartbeat` so gaps can be detected with sequence and last trade identifiers. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Sequence handling | Preserve Coinbase per-product `sequence` values on configured channels; gaps or out-of-order messages must flag intervals as unusable until repaired. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
 | Rate limits | Respect documented request, burst, inbound message, and subscription limits; collector settings must remain below them. | https://docs.cdp.coinbase.com/exchange/websocket-feed/rate-limits |
+| Subscription acknowledgement | A `subscriptions` message is the acknowledgement for subscribe/unsubscribe requests. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
+| Error behavior | Coinbase sends `type="error"` messages for many active disconnect/failure cases. Invalid subscription-style errors are terminal in Phase 2B. | https://docs.cdp.coinbase.com/exchange/websocket-feed/errors |
+| Reconnection guidance | Respect rate limits, avoid slow-consumer behavior, and keep subscription messages compact. | https://docs.cdp.coinbase.com/exchange/websocket-feed/best-practices |
 | Market rules | `BTC-USD` product endpoint currently reports `quote_increment=0.01`, `base_increment=0.00000001`, and online spot status. | https://api.exchange.coinbase.com/products/BTC-USD |
 | Fee assumption | Public low-volume Coinbase Exchange fee tier is captured as a dated assumption in `configs/market_rules.toml`. | https://help.coinbase.com/en/exchange/trading-and-funding/exchange-fees |
 
@@ -58,6 +61,17 @@ avoid pretending a full order book exists before sequence-gap handling is implem
 | `subscriptions` | `ParsedControlMessage` | `type` | Preserved as control, not a market event. |
 | `error` | `ExchangeErrorMessage` | `message` | Preserved separately from parser failures. |
 
+### Coinbase Phase 2B Live Behavior
+
+- Sends one public unauthenticated subscription message for `BTC-USD` with `matches`,
+  `ticker`, and `heartbeat`.
+- Tracks connection opened, request sent, acknowledgement observed, and first market
+  event separately.
+- Captures `local_receipt_ts` immediately after each receive returns and before JSON
+  decoding.
+- Treats `invalid`, `unauthorized`, `too many`, and `too big` exchange error text as
+  terminal for the bounded run; other transport disconnects use bounded retry.
+
 ## Kraken Spot WebSocket V2
 
 | Topic | Phase 01 Decision | Source |
@@ -69,6 +83,10 @@ avoid pretending a full order book exists before sequence-gap handling is implem
 | Book channel | Defer `book` until checksum validation and full-depth reconstruction are implemented. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/book |
 | Timestamp semantics | Treat RFC3339 timestamps as exchange timestamps, not unique identifiers. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Connection policy | Avoid rapid reconnect loops; maintain heartbeat/ping behavior for idle connections and observe documented reconnection guidance. | https://docs.kraken.com/exchange/guides/websockets/introduction |
+| Subscription acknowledgement | Subscribe responses include `success`, `result.channel`, `result.symbol`, optional warnings, and optional error text. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/trade |
+| Heartbeat | Heartbeats are automatic after subscribing to any channel; they are not directly requested. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/heartbeat |
+| Status | Status updates are automatic on successful connection and trading-engine status changes. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/status |
+| Reconnection guidance | Kraken notes public v2 endpoint, one-minute inactivity close behavior, Cloudflare reconnect limits, and no faster than five-second reconnects after maintenance or extended downtime. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Market rules | Kraken REST `AssetPairs` endpoint currently reports `tick_size=0.1`, `ordermin=0.00005`, maker fee tier starting at 0.25%, and taker fee tier starting at 0.40% for `BTC/USD`. | https://api.kraken.com/0/public/AssetPairs?pair=BTCUSD |
 
 Minimal Phase 2 subscription examples:
@@ -106,8 +124,19 @@ semantics. Do not compute depth features from ticker-only data, and do not treat
 | `channel=trade` snapshot/update | `NormalizedTrade` | `symbol`, `side`, `qty`, `price`, `trade_id`, `timestamp` | Multiple trades in one payload are emitted in source order; `trade_id` is preserved on trades only. |
 | `channel=ticker` snapshot/update | `NormalizedTopOfBook` | `symbol`, `ask`, `ask_qty`, `bid`, `bid_qty`, `timestamp` | Parser expects the configured `event_trigger=bbo` subscription but does not synthesize sequence or checksum values. |
 | `channel=heartbeat` | `ParsedControlMessage` | `channel`, optional `type` | Preserved as control, not a market event. |
+| `channel=status` | `ParsedControlMessage` | `channel`, `type` | Preserved as connection/status control, not a market event. |
 | `method=subscribe` | `ParsedControlMessage` or `ExchangeErrorMessage` | `result.channel`, `result.symbol`, `success`, `error` | Failed subscription acknowledgements are exchange errors, not parse errors. |
 | `method=error` | `ExchangeErrorMessage` | `error` | Preserved separately from parser failures. |
+
+### Kraken Phase 2B Live Behavior
+
+- Sends separate public unauthenticated subscriptions for `trade` and `ticker`.
+- Adds `event_trigger="bbo"` only to the ticker subscription.
+- Tracks trade and ticker acknowledgements independently.
+- Captures `local_receipt_ts` immediately after each receive returns and before JSON
+  decoding.
+- Treats unsupported symbol, invalid, authentication-required, and unsupported-channel
+  exchange errors as terminal; transport disconnects and inactivity use bounded retry.
 
 ## Responsible Collection Policy
 
