@@ -46,7 +46,7 @@ exchange_ts
 - Comparing venues without accounting for clock semantics and local receipt latency.
 - Reporting a clean equity curve before validating data quality.
 
-### Questions I Should Be Able To Answer
+### Review Questions
 
 1. Why is local receipt time different from exchange time?
 2. Why can a crossed book invalidate midpoint-based features?
@@ -72,4 +72,3 @@ at decision time is not tradable.
 Production systems separate raw ingestion, validation, strategy decisions, execution,
 and risk. That separation makes failures easier to diagnose and prevents research code
 from silently becoming execution code.
-

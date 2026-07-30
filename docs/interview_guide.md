@@ -1,4 +1,4 @@
-# Interview Guide
+# Technical Review Guide
 
 ## Phase 00 Questions
 
@@ -12,8 +12,7 @@
 8. How would you explain the difference between fair-value estimation and execution
    simulation?
 
-## Expected Themes
+## Evaluation Themes
 
 Good answers should emphasize causality, observability, timestamp ordering, data quality,
 and the difference between statistically interesting signals and executable trading edge.
-
