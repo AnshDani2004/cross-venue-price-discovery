@@ -1,0 +1,9 @@
+{
+  "method": "subscribe",
+  "result": {
+    "channel": "ticker",
+    "symbol": "BTC/USD",
+    "success": false,
+    "error": "invalid event_trigger"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "channel": "ticker",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "ETH/USD",
+      "bid": 3500.0,
+      "bid_qty": 2.0,
+      "ask": 3500.1,
+      "ask_qty": 1.0,
+      "timestamp": "2026-07-30T21:00:01.223456Z"
+    }
+  ]
+}

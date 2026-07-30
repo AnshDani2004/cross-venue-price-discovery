@@ -1,0 +1,15 @@
+{
+  "channel": "trade",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "side": "sell",
+      "qty": 0.05,
+      "price": 68000.1,
+      "ord_type": "market",
+      "trade_id": 102,
+      "timestamp": "2026-07-30T21:00:00.223456Z"
+    }
+  ]
+}

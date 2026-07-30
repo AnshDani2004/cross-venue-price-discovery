@@ -1,0 +1,12 @@
+{
+  "type": "ticker",
+  "sequence": 37475248783,
+  "product_id": "BTC-USD",
+  "best_bid": "68000.24",
+  "best_bid_size": "0.46688654",
+  "best_ask": "68000.27",
+  "best_ask_size": "1.56637040",
+  "time": "2026-07-30T21:00:00.223456Z",
+  "trade_id": 370843401,
+  "last_size": "0.01000000"
+}
