@@ -1,0 +1,136 @@
+campaign_schema_version = "3b.1"
+campaign_id = "btc-usd-coinbase-kraken-2026-07-31-v1"
+instrument = "BTC-USD"
+venues = ["coinbase", "kraken"]
+timezone = "America/New_York"
+
+quality_policy_version = "2d.2"
+normalization_schema_version = "3a.1"
+
+requested_duration_seconds = 1860
+minimum_overlap_seconds_per_accepted_session = 1800
+minimum_accepted_sessions = 10
+minimum_total_accepted_overlap_seconds = 18000
+minimum_calendar_dates = 3
+minimum_time_buckets = 3
+maximum_attempts = 15
+
+early_start_tolerance_seconds = 300
+late_start_tolerance_seconds = 900
+maximum_messages_per_venue = 100000
+
+registry_root = "data/campaigns"
+validated_manifest_root = "data/validated/manifests"
+normalized_output_root = "data/normalized"
+
+require_clean_working_tree = true
+require_frozen_runtime_commit = true
+require_archive_validation = true
+require_quality_acceptance = true
+require_promotion_dry_run = true
+preserve_all_attempts = true
+
+[[slots]]
+slot_id = "P01"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-07-31T14:00:00Z"
+planned_start_local = "2026-07-31 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "P02"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-07-31T20:00:00Z"
+planned_start_local = "2026-07-31 16:00 America/New_York"
+time_bucket = "AFTERNOON"
+
+[[slots]]
+slot_id = "P03"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-01T02:00:00Z"
+planned_start_local = "2026-07-31 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "P04"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-01T14:00:00Z"
+planned_start_local = "2026-08-01 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "P05"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-01T20:00:00Z"
+planned_start_local = "2026-08-01 16:00 America/New_York"
+time_bucket = "AFTERNOON"
+
+[[slots]]
+slot_id = "P06"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-02T02:00:00Z"
+planned_start_local = "2026-08-01 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "P07"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-02T14:00:00Z"
+planned_start_local = "2026-08-02 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "P08"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-02T20:00:00Z"
+planned_start_local = "2026-08-02 16:00 America/New_York"
+time_bucket = "AFTERNOON"
+
+[[slots]]
+slot_id = "P09"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-03T02:00:00Z"
+planned_start_local = "2026-08-02 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "P10"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-03T14:00:00Z"
+planned_start_local = "2026-08-03 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "R01"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-03T20:00:00Z"
+planned_start_local = "2026-08-03 16:00 America/New_York"
+time_bucket = "AFTERNOON"
+
+[[slots]]
+slot_id = "R02"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-04T02:00:00Z"
+planned_start_local = "2026-08-03 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "R03"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-04T14:00:00Z"
+planned_start_local = "2026-08-04 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "R04"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-04T20:00:00Z"
+planned_start_local = "2026-08-04 16:00 America/New_York"
+time_bucket = "AFTERNOON"
+
+[[slots]]
+slot_id = "R05"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-05T02:00:00Z"
+planned_start_local = "2026-08-04 22:00 America/New_York"
+time_bucket = "EVENING"

@@ -12,6 +12,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
+from cross_venue.campaigns.models import ValidatedCampaignManifest
 from cross_venue.collectors.base import ParseResult
 from cross_venue.collectors.coinbase.parser import parse_coinbase_message
 from cross_venue.collectors.kraken.parser import parse_kraken_message
@@ -22,6 +23,7 @@ from cross_venue.normalization.identifiers import (
     combine_hashes,
     semantic_table_hash,
     stable_event_id,
+    stable_source_event_id,
 )
 from cross_venue.normalization.parquet_writer import write_parquet
 from cross_venue.normalization.schemas import (
@@ -80,6 +82,20 @@ class _InputContext:
     session_manifests: dict[str, Any]
     session_quality_paths: dict[str, Path]
     source_snapshot: dict[str, Any]
+    campaign_lineage_by_session: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizationInputBundle:
+    contexts: tuple[_InputContext, ...]
+    dataset_identity: str
+    campaign_manifest: ValidatedCampaignManifest | None
+    campaign_manifest_path: Path | None
+    campaign_manifest_sha256: str | None
+
+    @property
+    def primary_context(self) -> _InputContext:
+        return self.contexts[0]
 
 
 def normalize_dataset(
@@ -107,7 +123,7 @@ def normalize_dataset(
     commit = current_git_commit()
     if expected_commit is not None and expected_commit != commit:
         raise NormalizationError(f"expected commit {expected_commit}, found {commit}")
-    context = load_normalization_input(
+    bundle = load_normalization_inputs(
         validated_manifest_path,
         storage_config=storage_config,
         quality_config=quality_config,
@@ -115,14 +131,14 @@ def normalize_dataset(
     )
     config_sha = sha256_file(Path("configs/normalization.toml"))
     dataset_id = normalized_dataset_id(
-        context,
+        bundle,
         normalization_schema_version=normalization_config.normalization_schema_version,
         normalization_config_sha256=config_sha,
         normalizer_git_commit=commit,
     )
     root = (output_root or normalization_config.output_root) / f"dataset={dataset_id}"
     if dry_run:
-        return _dry_run_plan(context, root, dataset_id)
+        return _dry_run_plan(bundle, root, dataset_id)
     if root.exists():
         raise NormalizationError(f"normalized output already exists: {root}")
     partial_root = root.with_name(f"{root.name}.partial")
@@ -133,18 +149,19 @@ def normalize_dataset(
     outcome_rows: list[dict[str, Any]] = []
     try:
         partial_root.mkdir(parents=True)
-        duplicate_index = _raw_duplicate_index(context)
-        for session_id, session_manifest in context.session_manifests.items():
-            _replay_session(
-                context,
-                session_id=session_id,
-                session_manifest=session_manifest,
-                duplicate_index=duplicate_index[session_id],
-                normalization_config=normalization_config,
-                trade_rows=trade_rows,
-                bbo_rows=bbo_rows,
-                outcome_rows=outcome_rows,
-            )
+        for context in bundle.contexts:
+            duplicate_index = _raw_duplicate_index(context)
+            for session_id, session_manifest in context.session_manifests.items():
+                _replay_session(
+                    context,
+                    session_id=session_id,
+                    session_manifest=session_manifest,
+                    duplicate_index=duplicate_index[session_id],
+                    normalization_config=normalization_config,
+                    trade_rows=trade_rows,
+                    bbo_rows=bbo_rows,
+                    outcome_rows=outcome_rows,
+                )
         files = _write_outputs(
             partial_root,
             trade_rows=trade_rows,
@@ -159,9 +176,10 @@ def normalize_dataset(
             [semantic_trade_hash, semantic_bbo_hash, semantic_outcome_hash]
         )
         reconciliation = _reconcile(trade_rows, bbo_rows, outcome_rows)
-        _verify_source_snapshot(context)
+        for context in bundle.contexts:
+            _verify_source_snapshot(context)
         manifest = _normalization_manifest(
-            context,
+            bundle,
             dataset_id=dataset_id,
             dataset_root=partial_root,
             normalizer_git_commit=commit,
@@ -192,12 +210,94 @@ def normalize_dataset(
     )
 
 
+def load_normalization_inputs(
+    validated_manifest_path: Path,
+    *,
+    storage_config: StorageConfig,
+    quality_config: DataQualityConfig,
+    normalization_config: NormalizationConfig,
+) -> _NormalizationInputBundle:
+    """Load a single-pair or campaign validated manifest bundle."""
+
+    manifest_path = resolve_under_root(
+        quality_config.validated_manifest_root, validated_manifest_path
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if "validated_campaign_manifest_version" not in payload:
+        context = load_normalization_input(
+            validated_manifest_path,
+            storage_config=storage_config,
+            quality_config=quality_config,
+            normalization_config=normalization_config,
+        )
+        return _NormalizationInputBundle(
+            contexts=(context,),
+            dataset_identity=context.validated_manifest.dataset_manifest_id,
+            campaign_manifest=None,
+            campaign_manifest_path=None,
+            campaign_manifest_sha256=None,
+        )
+    campaign = ValidatedCampaignManifest.model_validate(payload)
+    campaign_sha = sha256_file(manifest_path)
+    expected_content = model_sha256(campaign.model_copy(update={"content_hash": None}))
+    if campaign.content_hash != expected_content:
+        raise ValidatedManifestError("validated campaign manifest content hash mismatch")
+    if campaign.quality_policy_version != normalization_config.require_quality_policy_version:
+        raise ValidatedManifestError("campaign manifest policy version does not match config")
+    if campaign.instrument != "BTC-USD":
+        raise ValidatedManifestError("campaign manifest must contain BTC-USD only")
+    if set(campaign.venues) != {Exchange.COINBASE, Exchange.KRAKEN}:
+        raise ValidatedManifestError("campaign manifest must contain Coinbase and Kraken")
+    contexts: list[_InputContext] = []
+    seen_sessions: set[str] = set()
+    seen_pairs: set[str] = set()
+    for entry in sorted(
+        campaign.accepted_pair_manifests,
+        key=lambda item: (item.planned_start_utc, item.slot_id),
+    ):
+        if entry.paired_collection_id in seen_pairs:
+            raise ValidatedManifestError("campaign manifest contains duplicate paired collection")
+        seen_pairs.add(entry.paired_collection_id)
+        pair_path = (
+            quality_config.validated_manifest_root / entry.validated_pair_manifest_relative_path
+        )
+        if sha256_file(pair_path) != entry.validated_pair_manifest_sha256:
+            raise ValidatedManifestError("accepted pair manifest hash mismatch")
+        context = load_normalization_input(
+            pair_path,
+            storage_config=storage_config,
+            quality_config=quality_config,
+            normalization_config=normalization_config,
+            campaign_lineage={
+                "campaign_id": campaign.campaign_id,
+                "slot_id": entry.slot_id,
+                "campaign_attempt_id": entry.campaign_attempt_id,
+                "time_bucket": entry.time_bucket.value,
+                "validated_campaign_manifest_id": campaign.validated_campaign_manifest_id,
+                "validated_campaign_manifest_sha256": campaign_sha,
+            },
+        )
+        overlap = seen_sessions.intersection(context.validated_manifest.session_ids)
+        if overlap:
+            raise ValidatedManifestError("campaign manifest contains duplicate session inclusion")
+        seen_sessions.update(context.validated_manifest.session_ids)
+        contexts.append(context)
+    return _NormalizationInputBundle(
+        contexts=tuple(contexts),
+        dataset_identity=campaign.validated_campaign_manifest_id,
+        campaign_manifest=campaign,
+        campaign_manifest_path=manifest_path,
+        campaign_manifest_sha256=campaign_sha,
+    )
+
+
 def load_normalization_input(
     validated_manifest_path: Path,
     *,
     storage_config: StorageConfig,
     quality_config: DataQualityConfig,
     normalization_config: NormalizationConfig,
+    campaign_lineage: dict[str, Any] | None = None,
 ) -> _InputContext:
     """Load and verify the strict validated-manifest input contract."""
 
@@ -298,27 +398,32 @@ def load_normalization_input(
         session_manifests=session_manifests,
         session_quality_paths=quality_paths,
         source_snapshot=snapshot,
+        campaign_lineage_by_session={
+            session_id: dict(campaign_lineage or {}) for session_id in session_manifests
+        },
     )
 
 
 def normalized_dataset_id(
-    context: _InputContext,
+    bundle: _NormalizationInputBundle,
     *,
     normalization_schema_version: str,
     normalization_config_sha256: str,
     normalizer_git_commit: str,
 ) -> str:
-    paired_id = context.validated_manifest.paired_collection_ids[0]
+    identity = bundle.dataset_identity
+    if bundle.campaign_manifest is None:
+        identity = bundle.primary_context.validated_manifest.paired_collection_ids[0]
     full_hash = stable_event_id(
         [
-            context.validated_manifest.dataset_manifest_id,
-            context.manifest_sha256,
+            bundle.dataset_identity,
+            bundle.campaign_manifest_sha256 or bundle.primary_context.manifest_sha256,
             normalization_schema_version,
             normalization_config_sha256,
             normalizer_git_commit,
         ]
     )
-    return f"normalized-{safe_path_component(paired_id)}-{full_hash[:12]}"
+    return f"normalized-{safe_path_component(identity)}-{full_hash[:12]}"
 
 
 def _raw_duplicate_index(context: _InputContext) -> dict[str, dict[int, tuple[str, int, int]]]:
@@ -482,6 +587,7 @@ def _lineage(
 ) -> dict[str, Any]:
     return {
         "normalized_schema_version": "3a.1",
+        **context.campaign_lineage_by_session.get(session_manifest.session_id, {}),
         "validated_dataset_manifest_id": context.validated_manifest.dataset_manifest_id,
         "validated_dataset_manifest_sha256": context.manifest_sha256,
         "paired_collection_id": context.validated_manifest.paired_collection_ids[0],
@@ -513,7 +619,8 @@ def _trade_row(
     event_id = stable_event_id(
         [
             lineage["normalized_schema_version"],
-            lineage["validated_dataset_manifest_id"],
+            lineage.get("validated_campaign_manifest_id")
+            or lineage["validated_dataset_manifest_id"],
             lineage["venue"],
             lineage["session_id"],
             lineage["source_shard_relative_path"],
@@ -522,9 +629,18 @@ def _trade_row(
             child_index,
         ]
     )
+    source_event_id = stable_source_event_id(
+        venue=lineage["venue"],
+        session_id=lineage["session_id"],
+        source_shard_relative_path=lineage["source_shard_relative_path"],
+        source_raw_record_index=lineage["source_raw_record_index"],
+        normalized_event_type="trade",
+        normalized_child_index=child_index,
+    )
     row = {
         **lineage,
         "normalized_event_id": event_id,
+        "source_event_id": source_event_id,
         "source_channel": event.source_channel,
         "source_message_type": event.raw_message_type,
         "normalized_child_index": child_index,
@@ -565,7 +681,8 @@ def _bbo_row(
     event_id = stable_event_id(
         [
             lineage["normalized_schema_version"],
-            lineage["validated_dataset_manifest_id"],
+            lineage.get("validated_campaign_manifest_id")
+            or lineage["validated_dataset_manifest_id"],
             lineage["venue"],
             lineage["session_id"],
             lineage["source_shard_relative_path"],
@@ -574,9 +691,18 @@ def _bbo_row(
             child_index,
         ]
     )
+    source_event_id = stable_source_event_id(
+        venue=lineage["venue"],
+        session_id=lineage["session_id"],
+        source_shard_relative_path=lineage["source_shard_relative_path"],
+        source_raw_record_index=lineage["source_raw_record_index"],
+        normalized_event_type="top_of_book",
+        normalized_child_index=child_index,
+    )
     row = {
         **lineage,
         "normalized_event_id": event_id,
+        "source_event_id": source_event_id,
         "source_channel": event.source_channel,
         "source_message_type": event.raw_message_type,
         "normalized_child_index": child_index,
@@ -729,7 +855,7 @@ def _write_partitioned(
 
 
 def _normalization_manifest(
-    context: _InputContext,
+    bundle: _NormalizationInputBundle,
     *,
     dataset_id: str,
     dataset_root: Path,
@@ -748,6 +874,8 @@ def _normalization_manifest(
     output_file_checksums = {
         entry["relative_path"]: entry["sha256"] for items in files.values() for entry in items
     }
+    primary = bundle.primary_context
+    contexts = bundle.contexts
     return {
         "normalization_manifest_version": "3a.1",
         "normalized_dataset_id": dataset_id,
@@ -756,27 +884,60 @@ def _normalization_manifest(
         "normalizer_git_commit": normalizer_git_commit,
         "normalizer_working_tree_clean": _working_tree_clean(),
         "normalization_config_sha256": normalization_config_sha256,
-        "validated_dataset_manifest_id": context.validated_manifest.dataset_manifest_id,
-        "validated_dataset_manifest_sha256": context.manifest_sha256,
-        "quality_policy_version": context.validated_manifest.quality_policy_version,
-        "quality_policy_sha256": sha256_file(Path("configs/data_quality.toml")),
-        "paired_collection_id": context.validated_manifest.paired_collection_ids[0],
-        "canonical_instrument": context.validated_manifest.canonical_instrument,
-        "venues": [venue.value for venue in context.validated_manifest.venues],
-        "source_session_ids": list(context.validated_manifest.session_ids),
-        "source_session_manifest_hashes": dict(context.validated_manifest.raw_manifest_hashes),
-        "source_raw_shard_checksums_by_session": _session_shard_checksums(context.paired_report),
-        "source_quality_report_hashes": dict(
-            context.validated_manifest.session_quality_report_hashes
+        "validated_dataset_manifest_id": primary.validated_manifest.dataset_manifest_id,
+        "validated_dataset_manifest_sha256": primary.manifest_sha256,
+        "validated_campaign_manifest_id": (
+            bundle.campaign_manifest.validated_campaign_manifest_id
+            if bundle.campaign_manifest is not None
+            else None
         ),
-        "overlap_start": context.validated_manifest.overlap_start.isoformat(),
-        "overlap_end": context.validated_manifest.overlap_end.isoformat(),
+        "validated_campaign_manifest_sha256": bundle.campaign_manifest_sha256,
+        "quality_policy_version": primary.validated_manifest.quality_policy_version,
+        "quality_policy_sha256": sha256_file(Path("configs/data_quality.toml")),
+        "paired_collection_id": primary.validated_manifest.paired_collection_ids[0],
+        "paired_collection_ids": [
+            pair_id
+            for context in contexts
+            for pair_id in context.validated_manifest.paired_collection_ids
+        ],
+        "canonical_instrument": primary.validated_manifest.canonical_instrument,
+        "venues": [venue.value for venue in primary.validated_manifest.venues],
+        "source_session_ids": [
+            session_id
+            for context in contexts
+            for session_id in context.validated_manifest.session_ids
+        ],
+        "source_session_manifest_hashes": {
+            session_id: manifest_hash
+            for context in contexts
+            for session_id, manifest_hash in context.validated_manifest.raw_manifest_hashes.items()
+        },
+        "source_raw_shard_checksums_by_session": {
+            session_id: checksums
+            for context in contexts
+            for session_id, checksums in _session_shard_checksums(context.paired_report).items()
+        },
+        "source_quality_report_hashes": {
+            session_id: report_hash
+            for context in contexts
+            for session_id, report_hash in (
+                context.validated_manifest.session_quality_report_hashes.items()
+            )
+        },
+        "overlap_start": min(
+            context.validated_manifest.overlap_start for context in contexts
+        ).isoformat(),
+        "overlap_end": max(
+            context.validated_manifest.overlap_end for context in contexts
+        ).isoformat(),
         **files,
         "trade_row_count": len(trade_rows),
         "top_of_book_row_count": len(bbo_rows),
         "raw_record_outcome_row_count": len(outcome_rows),
         "source_raw_record_count": sum(
-            manifest.records_written for manifest in context.session_manifests.values()
+            manifest.records_written
+            for context in contexts
+            for manifest in context.session_manifests.values()
         ),
         "source_supported_trade_event_count": len(trade_rows),
         "source_supported_bbo_event_count": len(bbo_rows),
@@ -803,17 +964,34 @@ def _normalization_manifest(
     }
 
 
-def _dry_run_plan(context: _InputContext, root: Path, dataset_id: str) -> dict[str, Any]:
+def _dry_run_plan(
+    bundle: _NormalizationInputBundle,
+    root: Path,
+    dataset_id: str,
+) -> dict[str, Any]:
     source_records = sum(
-        manifest.records_written for manifest in context.session_manifests.values()
+        manifest.records_written
+        for context in bundle.contexts
+        for manifest in context.session_manifests.values()
     )
     return {
         "dry_run": True,
         "normalized_dataset_id": dataset_id,
         "planned_output_root": str(root),
-        "validated_dataset_manifest_id": context.validated_manifest.dataset_manifest_id,
+        "validated_dataset_manifest_id": (
+            bundle.primary_context.validated_manifest.dataset_manifest_id
+        ),
+        "validated_campaign_manifest_id": (
+            bundle.campaign_manifest.validated_campaign_manifest_id
+            if bundle.campaign_manifest is not None
+            else None
+        ),
         "source_raw_record_count": source_records,
-        "source_session_ids": list(context.validated_manifest.session_ids),
+        "source_session_ids": [
+            session_id
+            for context in bundle.contexts
+            for session_id in context.validated_manifest.session_ids
+        ],
     }
 
 

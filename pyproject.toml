@@ -48,6 +48,8 @@ markers = [
   "live_quality: opt-in paired public exchange quality validation tests",
   "live_calibration: opt-in bounded paired public exchange calibration pilots",
   "local_validated_data: opt-in tests that require ignored accepted local manifests",
+  "campaign_smoke: opt-in nonresearch campaign collection smoke tests",
+  "local_campaign_data: opt-in tests that require ignored local campaign artifacts",
   "property: property-based tests",
   "regression: locked behavior tests for previously fixed issues",
 ]

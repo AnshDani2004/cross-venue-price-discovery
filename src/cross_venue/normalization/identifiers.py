@@ -17,6 +17,29 @@ def stable_event_id(components: Sequence[str | int]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def stable_source_event_id(
+    *,
+    venue: str,
+    session_id: str,
+    source_shard_relative_path: str,
+    source_raw_record_index: int,
+    normalized_event_type: str,
+    normalized_child_index: int,
+) -> str:
+    """Return a dataset-independent event ID from immutable source lineage."""
+
+    return stable_event_id(
+        [
+            venue,
+            session_id,
+            source_shard_relative_path,
+            source_raw_record_index,
+            normalized_event_type,
+            normalized_child_index,
+        ]
+    )
+
+
 def semantic_row_hash(row: Mapping[str, Any], columns: Sequence[str]) -> str:
     """Hash one row using stable ordered JSON-compatible values."""
 

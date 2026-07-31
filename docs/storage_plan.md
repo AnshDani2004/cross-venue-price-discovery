@@ -84,3 +84,25 @@ semantic hashes, and source hash reverification pass.
 DuckDB catalogs are local ignored inspection catalogs that expose views over Parquet
 files. They are not authoritative storage and can be rebuilt from the normalization
 manifest.
+
+## Phase 3B Campaign Layout
+
+Phase 3B generated campaign state is ignored and stored under:
+
+```text
+data/campaigns/campaign=btc-usd-coinbase-kraken-2026-07-31-v1/
+  registry/campaign_registry.json
+  ledger/campaign_events.jsonl
+  locks/campaign.lock
+  attempts/slot=<slot_id>/attempt=<number>/attempt_summary.json
+  reports/campaign_status.json
+  reports/campaign_status.md
+  reports/campaign_validation_report.json
+  manifest/validated_campaign_manifest.json
+  normalization/campaign_normalization_reference.json
+```
+
+Validated campaign manifests remain ignored under `data/validated/manifests`. Campaign
+normalization outputs remain ignored under `data/normalized`. Raw archives, quality
+reports, campaign registries, ledgers, Parquet files, and DuckDB catalogs must not be
+tracked by Git.
