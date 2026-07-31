@@ -37,6 +37,7 @@ models/
 artifacts/models/
 data/raw/*
 data/normalized/*
+data/campaigns/*
 data/features/*
 data/manifests/*
 data/quality/*
