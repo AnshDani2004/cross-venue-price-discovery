@@ -19,8 +19,9 @@ without skipping data integrity, timestamp discipline, or risk controls.
 - Phase 2D: Data-quality validation implemented with session quality reports,
   duplicate/continuity/timestamp/quote diagnostics, paired overlap reports,
   explicit dispositions, aggregation, dry-run promotion, and opt-in live quality tests.
-- Phase 2D.1: Quality calibration implemented with policy 2d.2; dataset approval for
-  Phase 3 depends on newly accepted paired pilots and a validated manifest.
+- Phase 2D.1: Quality calibration complete with policy 2d.2; at least one paired
+  dataset was accepted and manifested. Phase 3 normalization may begin on the validated
+  manifest only.
 
 No normalized datasets, predictive models, fair-value models, backtests, trading
 policies, or execution simulators have been implemented.
