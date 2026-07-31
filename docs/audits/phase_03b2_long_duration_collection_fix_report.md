@@ -75,5 +75,50 @@ The regression suite now covers:
 - zero-data failed-attempt runtime migration
 - migration blocked when failed attempts contain collected evidence
 
-Final test results, migration event hashes, and next executable slots are recorded in the
-task final report after the corrective commit and campaign migrations.
+Focused duration and migration tests passed with `41 passed, 2 skipped`.
+
+Required validation gates passed before runtime migration:
+
+- `ruff format .`
+- `ruff check .`
+- `ruff format --check .`
+- `mypy src`
+- selected non-live pytest: `250 passed, 8 deselected`
+- `pre-commit run --all-files`
+- `make check`: `250 passed, 3 skipped, 5 deselected`
+- `pip check`
+- `git diff --check`
+
+## Migration Results
+
+Initial corrective commit: `1546d7f011ba1d27e3f90f8e0119ceafbce0d0d0`.
+
+Multi-day campaign migration:
+
+- Campaign ID: `btc-usd-coinbase-kraken-2026-07-31-v1`
+- Old runtime: `eecfdee01186bdc1a8d35546f22888dbf50ba5cf`
+- New runtime: `1546d7f011ba1d27e3f90f8e0119ceafbce0d0d0`
+- Event type: `CAMPAIGN_RUNTIME_MIGRATED`
+- Event index: `3`
+- Event hash: `f4a30d683ab76d2b08725fc7fccfe89e4f818f3adac828ee179fbfc82bbe1881`
+- Validation status: `VALID`
+
+Intraday campaign migration:
+
+- Campaign ID: `btc-usd-coinbase-kraken-2026-07-31-intraday-v1`
+- Old runtime: `eecfdee01186bdc1a8d35546f22888dbf50ba5cf`
+- New runtime: `1546d7f011ba1d27e3f90f8e0119ceafbce0d0d0`
+- Event type: `CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE`
+- Event index: `3`
+- Event hash: `51b3619db77b0e734a37f3cd2f8feec58b945ced4525ab675960c44d81711a20`
+- Validation status: `VALID`
+
+Because this report was finalized after the first corrective migration, the campaigns are
+expected to receive one additional migration event to the final documentation commit.
+
+## Next Slots
+
+- Intraday next slot: `I02`, planned `2026-07-31 13:45 America/New_York`
+- Multi-day next slot: `P02`, planned `2026-07-31 16:00 America/New_York`
+
+No slot was run during this remediation before the report was finalized.
