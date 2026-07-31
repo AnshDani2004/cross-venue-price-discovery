@@ -37,6 +37,10 @@ An attempt is accepted only when venue quality, paired quality, archive validati
 campaign overlap, and promotion dry-run checks all pass. A paired quality disposition of
 `ACCEPTED` is not enough when campaign-level overlap is below the configured threshold.
 
+Campaign collector-limit validation must include the venue collector stop predicate, not
+only campaign-level attempt diagnostics. Accepted future attempts should retain effective
+per-venue duration/message limits and stop reasons as audit evidence.
+
 Review date: 2026-07-31.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a

@@ -140,6 +140,15 @@
 - A 100,000-message cap reduces premature stopping risk for 31-minute public slots, but
   it is still a finite safety cap and can be hit in unusually high message-rate regimes.
 
+## Phase 3B.4
+
+- Phase 3B.4 removes the archival campaign path's in-memory diagnostic sink cap, but it
+  does not retroactively change I02 or I04.
+- Future attempts expose effective per-venue duration/message limits and typed stop
+  reasons; historical attempts do not contain those diagnostics.
+- Smoke and dry-run collectors still use bounded in-memory sinks and are not substitutes
+  for archival campaign validation.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

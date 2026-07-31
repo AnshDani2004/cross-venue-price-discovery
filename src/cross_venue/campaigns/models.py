@@ -100,6 +100,7 @@ class RuntimeMigrationReason(StrEnum):
     GENERIC_ENGINE_BEFORE_FIRST_COLLECTION = "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION"
     LONG_DURATION_PREFLIGHT_FIX = "LONG_DURATION_PREFLIGHT_FIX"
     CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX = "CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"
+    COLLECTOR_INTERNAL_MESSAGE_LIMIT_FIX = "COLLECTOR_INTERNAL_MESSAGE_LIMIT_FIX"
 
 
 class AttemptExclusionReason(StrEnum):
@@ -365,6 +366,12 @@ class AttemptSummary(BaseModel):
     kraken_session_id: str | None = None
     coinbase_frame_count: int = Field(default=0, ge=0)
     kraken_frame_count: int = Field(default=0, ge=0)
+    coinbase_effective_duration_limit_seconds: float | None = Field(default=None, gt=0)
+    kraken_effective_duration_limit_seconds: float | None = Field(default=None, gt=0)
+    coinbase_effective_message_limit: int | None = Field(default=None, gt=0)
+    kraken_effective_message_limit: int | None = Field(default=None, gt=0)
+    coinbase_stop_reason: str | None = None
+    kraken_stop_reason: str | None = None
     coinbase_trade_count: int = Field(default=0, ge=0)
     kraken_trade_count: int = Field(default=0, ge=0)
     coinbase_bbo_count: int = Field(default=0, ge=0)

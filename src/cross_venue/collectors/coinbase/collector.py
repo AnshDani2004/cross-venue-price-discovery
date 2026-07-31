@@ -20,7 +20,7 @@ from cross_venue.collectors.runtime import (
     RunLimits,
     run_collector,
 )
-from cross_venue.collectors.sink import InMemoryEventSink
+from cross_venue.collectors.sink import DiscardingEventSink, EventSink, InMemoryEventSink
 from cross_venue.collectors.transport import WebSocketConnector, WebsocketsConnector
 from cross_venue.config import VenueFeedConfig, load_venue_catalog_config
 from cross_venue.schemas import Exchange
@@ -70,11 +70,11 @@ class CoinbaseLiveCollector:
         *,
         config: VenueFeedConfig,
         connector: WebSocketConnector | None = None,
-        sink: InMemoryEventSink | None = None,
+        sink: EventSink | None = None,
     ) -> None:
         self.spec = build_coinbase_runtime_spec(config)
         self.connector = connector or WebsocketsConnector()
-        self.sink = sink or InMemoryEventSink(max_items=10_000)
+        self.sink = sink
 
     def parse_message(
         self,
@@ -99,10 +99,15 @@ class CoinbaseLiveCollector:
     ) -> CollectorRunSummary:
         """Run a bounded public collection session."""
 
+        sink = self.sink or (
+            DiscardingEventSink()
+            if archive_writer is not None
+            else InMemoryEventSink(max_items=10_000)
+        )
         return await run_collector(
             self.spec,
             connector=self.connector,
-            sink=self.sink,
+            sink=sink,
             limits=limits,
             stop_event=stop_event,
             archive_writer=archive_writer,
@@ -113,7 +118,7 @@ def load_coinbase_live_collector(
     *,
     config_path: Path = Path("configs/venues.toml"),
     connector: WebSocketConnector | None = None,
-    sink: InMemoryEventSink | None = None,
+    sink: EventSink | None = None,
 ) -> CoinbaseLiveCollector:
     """Load Coinbase collector from repository config."""
 

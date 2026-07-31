@@ -389,7 +389,7 @@ def test_runtime_migration_blocked_after_collected_failed_attempt(
         attempt=_zero_data_failed_attempt(config).model_copy(update={"coinbase_frame_count": 1}),
     )
 
-    with pytest.raises(Exception, match="CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"):
+    with pytest.raises(Exception, match="corrective excluded-attempt reason"):
         migrate_campaign_runtime(
             config,
             reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,
@@ -458,7 +458,7 @@ def test_runtime_migration_blocked_after_excluded_attempt_with_wrong_reason(
         attempt=_excluded_rejected_attempt(config),
     )
 
-    with pytest.raises(Exception, match="CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"):
+    with pytest.raises(Exception, match="corrective excluded-attempt reason"):
         migrate_campaign_runtime(
             config,
             reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,

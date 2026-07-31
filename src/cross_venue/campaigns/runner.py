@@ -208,6 +208,16 @@ def _attempt_from_result(
             "kraken_session_id": kraken.session_id,
             "coinbase_frame_count": coinbase.metrics.coverage.frames_received,
             "kraken_frame_count": kraken.metrics.coverage.frames_received,
+            "coinbase_effective_duration_limit_seconds": (
+                result.coinbase_summary.effective_duration_limit_seconds
+            ),
+            "kraken_effective_duration_limit_seconds": (
+                result.kraken_summary.effective_duration_limit_seconds
+            ),
+            "coinbase_effective_message_limit": result.coinbase_summary.effective_message_limit,
+            "kraken_effective_message_limit": result.kraken_summary.effective_message_limit,
+            "coinbase_stop_reason": str(result.coinbase_summary.stop_reason),
+            "kraken_stop_reason": str(result.kraken_summary.stop_reason),
             "coinbase_trade_count": coinbase.metrics.coverage.trades,
             "kraken_trade_count": kraken.metrics.coverage.trades,
             "coinbase_bbo_count": coinbase.metrics.coverage.top_of_book_events,
