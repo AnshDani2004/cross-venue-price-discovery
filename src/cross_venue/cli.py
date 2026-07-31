@@ -412,6 +412,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION",
             "LONG_DURATION_PREFLIGHT_FIX",
+            "CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX",
         ),
         required=True,
     )

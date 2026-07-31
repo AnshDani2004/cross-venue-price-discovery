@@ -172,6 +172,7 @@ def rebuild_registry_from_ledger(
         elif event.event_type in {
             LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED,
             LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE,
+            LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS,
         }:
             registry = registry.model_copy(
                 update={

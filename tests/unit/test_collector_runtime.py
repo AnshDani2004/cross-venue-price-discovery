@@ -135,6 +135,7 @@ async def test_runtime_routes_raw_control_and_market_events() -> None:
     assert summary.completed_successfully
     assert summary.subscription_acknowledged
     assert summary.stats.frames_received == 2
+    assert summary.stop_reason == "message limit reached"
     assert summary.stats.raw_messages_created == 2
     assert summary.stats.control_messages == 1
     assert summary.stats.top_of_book_events == 1

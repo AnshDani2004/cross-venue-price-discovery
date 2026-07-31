@@ -99,6 +99,22 @@ class RuntimeMigrationReason(StrEnum):
 
     GENERIC_ENGINE_BEFORE_FIRST_COLLECTION = "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION"
     LONG_DURATION_PREFLIGHT_FIX = "LONG_DURATION_PREFLIGHT_FIX"
+    CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX = "CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"
+
+
+class AttemptExclusionReason(StrEnum):
+    """Typed reasons an attempt is excluded from campaign research inputs."""
+
+    ATTEMPT_NOT_COMPLETE = "ATTEMPT_NOT_COMPLETE"
+    ATTEMPT_FAILED = "ATTEMPT_FAILED"
+    COLLECTION_PREFLIGHT_FAILED = "COLLECTION_PREFLIGHT_FAILED"
+    ARCHIVE_VALIDATION_FAILED = "ARCHIVE_VALIDATION_FAILED"
+    COINBASE_QUALITY_NOT_ACCEPTED = "COINBASE_QUALITY_NOT_ACCEPTED"
+    KRAKEN_QUALITY_NOT_ACCEPTED = "KRAKEN_QUALITY_NOT_ACCEPTED"
+    PAIRED_QUALITY_NOT_ACCEPTED = "PAIRED_QUALITY_NOT_ACCEPTED"
+    PAIRED_QUALITY_QUARANTINED = "PAIRED_QUALITY_QUARANTINED"
+    INSUFFICIENT_PAIRED_OVERLAP = "INSUFFICIENT_PAIRED_OVERLAP"
+    PROMOTION_DRY_RUN_BLOCKED = "PROMOTION_DRY_RUN_BLOCKED"
 
 
 class FailureClassification(StrEnum):
@@ -165,6 +181,9 @@ class LedgerEventType(StrEnum):
     CAMPAIGN_RUNTIME_MIGRATED = "CAMPAIGN_RUNTIME_MIGRATED"
     CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE = (
         "CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE"
+    )
+    CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS = (
+        "CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS"
     )
     CAMPAIGN_COMPLETION_EVALUATED = "CAMPAIGN_COMPLETION_EVALUATED"
     CAMPAIGN_FINALIZED = "CAMPAIGN_FINALIZED"
@@ -334,6 +353,11 @@ class AttemptSummary(BaseModel):
     actual_started_at: datetime | None = None
     actual_completed_at: datetime | None = None
     requested_duration_seconds: int
+    maximum_messages_per_venue: int | None = Field(
+        default=None,
+        ge=1,
+    )
+    attempt_runtime_git_commit: str | None = Field(default=None, min_length=7, max_length=64)
     actual_collection_duration_seconds: float | None = Field(default=None, ge=0)
     paired_overlap_seconds: float = Field(default=0, ge=0)
     paired_collection_id: str | None = None

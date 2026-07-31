@@ -28,6 +28,14 @@ three-date requirement. Accepted sessions cannot be manually excluded from eithe
 Campaign collection-duration validation must be tested through the complete runtime path
 from campaign slot execution into Phase 2D paired collection. Mocked campaign runners are
 not sufficient evidence that production-duration slots can reach public collectors.
+Campaign message-limit validation has the same requirement: campaign config,
+registry-derived runtime, paired collection preflight, and collector `RunLimits` must be
+covered in one offline regression path before long-duration public slots are considered
+operationally ready.
+
+An attempt is accepted only when venue quality, paired quality, archive validation,
+campaign overlap, and promotion dry-run checks all pass. A paired quality disposition of
+`ACCEPTED` is not enough when campaign-level overlap is below the configured threshold.
 
 Review date: 2026-07-31.
 

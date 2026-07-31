@@ -12,6 +12,7 @@ from cross_venue.campaigns.exceptions import (
 )
 from cross_venue.campaigns.locking import CampaignLock
 from cross_venue.campaigns.models import (
+    AttemptExclusionReason,
     AttemptStatus,
     AttemptSummary,
     CampaignConfig,
@@ -69,8 +70,10 @@ async def run_campaign_slot(
         time_bucket=slot.time_bucket,
         actual_started_at=started,
         requested_duration_seconds=config.requested_duration_seconds,
+        maximum_messages_per_venue=config.maximum_messages_per_venue,
+        attempt_runtime_git_commit=registry.runtime_git_commit,
         attempt_status=AttemptStatus.STARTED,
-        exclusion_reason="attempt not complete",
+        exclusion_reason=AttemptExclusionReason.ATTEMPT_NOT_COMPLETE.value,
     )
     with CampaignLock(config, slot_id=slot_id, campaign_attempt_id=attempt_id):
         record_attempt_event(
@@ -99,7 +102,7 @@ async def run_campaign_slot(
                     "attempt_status": AttemptStatus.FAILED,
                     "failure_classification": FailureClassification.COLLECTION_PREFLIGHT_FAILURE,
                     "failure_message": str(exc)[:500],
-                    "exclusion_reason": "collection preflight failed",
+                    "exclusion_reason": (AttemptExclusionReason.COLLECTION_PREFLIGHT_FAILED.value),
                 }
             )
         except Exception as exc:
@@ -109,7 +112,7 @@ async def run_campaign_slot(
                     "attempt_status": AttemptStatus.FAILED,
                     "failure_classification": FailureClassification.UNKNOWN_FAILURE,
                     "failure_message": str(exc)[:500],
-                    "exclusion_reason": "attempt failed",
+                    "exclusion_reason": AttemptExclusionReason.ATTEMPT_FAILED.value,
                 }
             )
         record_attempt_event(config, event_type=_final_event_type(final), attempt=final)
@@ -148,7 +151,7 @@ def _attempt_from_result(
     manifest_sha: str | None = None
     status = AttemptStatus.REJECTED
     inclusion = InclusionStatus.EXCLUDED
-    exclusion_reason: str | None = "quality disposition was not accepted"
+    exclusion_reason: str | None = _rejected_exclusion_reason(config, result)
     failure_classification: FailureClassification | None = None
     failure_message: str | None = None
     try:
@@ -189,7 +192,7 @@ def _attempt_from_result(
         exclusion_reason = None
     elif paired.disposition == QualityDisposition.QUARANTINED:
         status = AttemptStatus.QUARANTINED
-        exclusion_reason = "paired quality disposition was quarantined"
+        exclusion_reason = AttemptExclusionReason.PAIRED_QUALITY_QUARANTINED.value
     else:
         status = AttemptStatus.REJECTED
     completed = datetime.now(UTC)
@@ -238,6 +241,31 @@ def _attempt_from_result(
             "exclusion_reason": exclusion_reason,
         }
     )
+
+
+def _rejected_exclusion_reason(
+    config: CampaignConfig,
+    result: PairedCollectionResult,
+) -> str:
+    paired = result.paired_report
+    coinbase = paired.coinbase_report
+    kraken = paired.kraken_report
+    if not coinbase.archive_validation_passed or not kraken.archive_validation_passed:
+        return AttemptExclusionReason.ARCHIVE_VALIDATION_FAILED.value
+    if coinbase.disposition != QualityDisposition.ACCEPTED:
+        return AttemptExclusionReason.COINBASE_QUALITY_NOT_ACCEPTED.value
+    if kraken.disposition != QualityDisposition.ACCEPTED:
+        return AttemptExclusionReason.KRAKEN_QUALITY_NOT_ACCEPTED.value
+    if paired.disposition != QualityDisposition.ACCEPTED:
+        return AttemptExclusionReason.PAIRED_QUALITY_NOT_ACCEPTED.value
+    observed = paired.overlap.market_event_overlap_duration_seconds
+    required = config.minimum_overlap_seconds_per_accepted_session
+    if observed < required:
+        return (
+            f"{AttemptExclusionReason.INSUFFICIENT_PAIRED_OVERLAP.value}: "
+            f"observed={observed:g}, required={required:g}"
+        )
+    return AttemptExclusionReason.PROMOTION_DRY_RUN_BLOCKED.value
 
 
 def _final_event_type(attempt: AttemptSummary) -> LedgerEventType:

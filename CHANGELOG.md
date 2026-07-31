@@ -39,3 +39,6 @@
   preflight with 31-minute campaign sessions, classifying preflight failures explicitly,
   preserving failed zero-data attempts, and allowing controlled corrective runtime
   migration.
+- Fix Phase 3B campaign message-limit propagation, record future attempt runtime and
+  message-limit diagnostics, distinguish insufficient-overlap rejections, and add a
+  controlled runtime migration path after excluded failed/rejected attempts.

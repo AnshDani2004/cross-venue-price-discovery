@@ -304,6 +304,8 @@ def campaign_status_payload(config: CampaignConfig, registry: CampaignRegistry) 
         "next_scheduled_slot": next_slot.model_dump(mode="json") if next_slot else None,
         "accepted_sessions": registry.accepted_attempt_count,
         "accepted_overlap_seconds": registry.accepted_overlap_seconds,
+        "requested_duration_seconds": config.requested_duration_seconds,
+        "maximum_messages_per_venue": config.maximum_messages_per_venue,
         "accepted_calendar_dates": list(registry.accepted_calendar_dates),
         "accepted_time_buckets": [bucket.value for bucket in registry.accepted_time_buckets],
         "attempt_counts": {
@@ -335,6 +337,8 @@ def status_markdown(status: dict[str, Any]) -> str:
         f"- Current UTC time: `{status['current_utc_time']}`",
         f"- Accepted sessions: {status['accepted_sessions']}",
         f"- Accepted overlap seconds: {status['accepted_overlap_seconds']}",
+        f"- Requested duration seconds: {status['requested_duration_seconds']}",
+        f"- Maximum messages per venue: {status['maximum_messages_per_venue']}",
         f"- Completion: {status['completion_status']}",
     ]
     if status["next_scheduled_slot"] is not None:
