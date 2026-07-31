@@ -177,6 +177,7 @@ def analyze_session_quality(
         coverage=coverage_metrics,
     )
     findings = _build_findings(
+        venue=manifest.venue,
         archive_valid=archive_validation.valid,
         archive_errors=archive_validation.errors,
         manifest_records=manifest.records_written,
@@ -540,6 +541,7 @@ def _quote_metrics(
 
 def _build_findings(
     *,
+    venue: Exchange,
     archive_valid: bool,
     archive_errors: tuple[str, ...],
     manifest_records: int,
@@ -591,6 +593,7 @@ def _build_findings(
     coverage = quality_config.quality.coverage
     timestamps = quality_config.quality.timestamps
     duplicates = quality_config.quality.duplicates
+    calibrated = quality_config.policy_version == "2d.2"
     parse_rate = _proportion(
         metrics.coverage.parse_errors, max(1, metrics.coverage.frames_received)
     )
@@ -709,29 +712,79 @@ def _build_findings(
             )
         )
     if metrics.timestamps.negative_observed_exchange_receipt_delta_count > 0:
-        findings.append(
-            _finding(
-                "TIMESTAMP_NEGATIVE_OBSERVED_EXCHANGE_RECEIPT_DELTA",
-                "timestamps",
-                QualitySeverity.WARNING,
-                "negative_observed_exchange_receipt_delta_count",
-                metrics.timestamps.negative_observed_exchange_receipt_delta_count,
-                0,
-                "observed exchange-receipt delta has negative values; this is not latency",
-                {"delta_name": "observed_exchange_receipt_delta"},
+        if calibrated:
+            delta_class = _delta_pattern_classification(metrics, quality_config)
+            findings.append(
+                _finding(
+                    "TIMESTAMP_OBSERVED_EXCHANGE_RECEIPT_DELTA_PATTERN",
+                    "timestamps",
+                    _configured_severity(
+                        _delta_classification_severity(delta_class, quality_config)
+                    ),
+                    "observed_exchange_receipt_delta_pattern",
+                    delta_class,
+                    None,
+                    (
+                        "observed exchange-receipt delta pattern is preserved as a "
+                        "clock/feed diagnostic, not one-way latency"
+                    ),
+                    {
+                        "delta_name": "observed_exchange_receipt_delta",
+                        "negative_count": (
+                            metrics.timestamps.negative_observed_exchange_receipt_delta_count
+                        ),
+                        "eligible_events": (
+                            metrics.timestamps.observed_exchange_receipt_delta_count
+                        ),
+                        "median_ms": (metrics.timestamps.observed_exchange_receipt_delta_median_ms),
+                        "p95_ms": metrics.timestamps.observed_exchange_receipt_delta_p95_ms,
+                        "p99_ms": metrics.timestamps.observed_exchange_receipt_delta_p99_ms,
+                    },
+                )
             )
-        )
+        else:
+            findings.append(
+                _finding(
+                    "TIMESTAMP_NEGATIVE_OBSERVED_EXCHANGE_RECEIPT_DELTA",
+                    "timestamps",
+                    QualitySeverity.WARNING,
+                    "negative_observed_exchange_receipt_delta_count",
+                    metrics.timestamps.negative_observed_exchange_receipt_delta_count,
+                    0,
+                    "observed exchange-receipt delta has negative values; this is not latency",
+                    {"delta_name": "observed_exchange_receipt_delta"},
+                )
+            )
     if metrics.duplicates.exact_raw_duplicate_rate > duplicates.max_exact_raw_duplicate_rate:
+        duplicate_severity = QualitySeverity.WARNING
+        duplicate_id = "DUPLICATES_RAW_FRAME_RATE"
+        duplicate_message = "exact raw-frame duplicate rate exceeds policy"
+        if calibrated and venue == Exchange.KRAKEN:
+            duplicate_id = "DUPLICATES_KRAKEN_TYPED_RAW_FRAME"
+            duplicate_message = (
+                "Kraken exact raw-frame duplicates are typed by control, ticker, and trade "
+                "semantics; aggregate rate is diagnostic only"
+            )
+            duplicate_severity = (
+                QualitySeverity.WARNING
+                if metrics.duplicates.duplicate_trade_id_count > 0
+                else _configured_severity(
+                    quality_config.quality.kraken_duplicates.heartbeat_duplicate_severity
+                )
+            )
         findings.append(
             _finding(
-                "DUPLICATES_RAW_FRAME_RATE",
+                duplicate_id,
                 "duplicates",
-                QualitySeverity.WARNING,
+                duplicate_severity,
                 "exact_raw_duplicate_rate",
                 metrics.duplicates.exact_raw_duplicate_rate,
                 duplicates.max_exact_raw_duplicate_rate,
-                "exact raw-frame duplicate rate exceeds policy",
-                {"duplicate_count": metrics.duplicates.exact_raw_duplicate_count},
+                duplicate_message,
+                {
+                    "duplicate_count": metrics.duplicates.exact_raw_duplicate_count,
+                    "raw_duplicate_rate_preserved": metrics.duplicates.exact_raw_duplicate_rate,
+                },
             )
         )
     if metrics.duplicates.duplicate_trade_id_rate > duplicates.max_duplicate_trade_id_rate:
@@ -760,26 +813,29 @@ def _build_findings(
                 {"conflicts": metrics.duplicates.conflicting_duplicate_trade_count},
             )
         )
-    sequence_anomalies = (
-        metrics.continuity.coinbase_duplicate_sequence_count
-        + metrics.continuity.coinbase_nonmonotonic_sequence_count
-        + metrics.continuity.coinbase_sequence_discontinuity_count
-        + metrics.continuity.kraken_duplicate_trade_id_count
-        + metrics.continuity.kraken_nonmonotonic_trade_id_count
-    )
-    if sequence_anomalies > 0:
-        findings.append(
-            _finding(
-                "CONTINUITY_IDENTIFIER_ANOMALY",
-                "continuity",
-                QualitySeverity.WARNING,
-                "identifier_anomaly_count",
-                sequence_anomalies,
-                0,
-                "identifier continuity diagnostics require review",
-                {"kraken_ticker_sequence_checks_skipped": True},
-            )
+    if calibrated:
+        _extend_calibrated_continuity_findings(findings, metrics, quality_config, venue)
+    else:
+        sequence_anomalies = (
+            metrics.continuity.coinbase_duplicate_sequence_count
+            + metrics.continuity.coinbase_nonmonotonic_sequence_count
+            + metrics.continuity.coinbase_sequence_discontinuity_count
+            + metrics.continuity.kraken_duplicate_trade_id_count
+            + metrics.continuity.kraken_nonmonotonic_trade_id_count
         )
+        if sequence_anomalies > 0:
+            findings.append(
+                _finding(
+                    "CONTINUITY_IDENTIFIER_ANOMALY",
+                    "continuity",
+                    QualitySeverity.WARNING,
+                    "identifier_anomaly_count",
+                    sequence_anomalies,
+                    0,
+                    "identifier continuity diagnostics require review",
+                    {"kraken_ticker_sequence_checks_skipped": True},
+                )
+            )
     quote_failures = metrics.quotes.locked_market_count + metrics.quotes.crossed_market_count
     if quote_failures > 0:
         findings.append(
@@ -799,15 +855,27 @@ def _build_findings(
             )
         )
     if metrics.quotes.stale_interval_count > 0:
+        quote_severity = QualitySeverity.WARNING
+        quote_finding_id = "QUOTES_STALE_INTERVALS"
+        quote_message = "stale quote intervals require review"
+        if calibrated:
+            quote_severity = _configured_severity(
+                quality_config.quality.quote_freshness.quote_age_severity
+            )
+            quote_finding_id = "QUOTES_AGE_DIAGNOSTIC"
+            quote_message = (
+                "quote age exceeded threshold; freshness interpretation is separated from "
+                "connection inactivity and documented feed semantics"
+            )
         findings.append(
             _finding(
-                "QUOTES_STALE_INTERVALS",
+                quote_finding_id,
                 "quotes",
-                QualitySeverity.WARNING,
+                quote_severity,
                 "stale_interval_count",
                 metrics.quotes.stale_interval_count,
                 0,
-                "stale quote intervals require review",
+                quote_message,
                 {"stale_threshold_ms": timestamps.stale_quote_threshold_ms},
                 affected_channel="ticker",
             )
@@ -838,6 +906,128 @@ def _finding(
         evidence=evidence,
         affected_channel=affected_channel,
     )
+
+
+def _configured_severity(value: str) -> QualitySeverity:
+    return {
+        "info": QualitySeverity.INFO,
+        "warning": QualitySeverity.WARNING,
+        "error": QualitySeverity.ERROR,
+        "critical": QualitySeverity.CRITICAL,
+    }[value]
+
+
+def _delta_pattern_classification(
+    metrics: SessionQualityMetrics,
+    quality_config: DataQualityConfig,
+) -> str:
+    policy = quality_config.quality.exchange_receipt_delta
+    count = metrics.timestamps.observed_exchange_receipt_delta_count
+    if count < policy.minimum_events_for_classification:
+        return "INSUFFICIENT_EVIDENCE"
+    negative_rate = _proportion(
+        metrics.timestamps.negative_observed_exchange_receipt_delta_count,
+        count,
+    )
+    minimum = metrics.timestamps.observed_exchange_receipt_delta_min_ms
+    maximum = metrics.timestamps.observed_exchange_receipt_delta_max_ms
+    p95 = metrics.timestamps.observed_exchange_receipt_delta_p95_ms
+    median_value = metrics.timestamps.observed_exchange_receipt_delta_median_ms
+    if minimum is None or maximum is None or p95 is None or median_value is None:
+        return "INSUFFICIENT_EVIDENCE"
+    spread = maximum - minimum
+    upper_spread = abs(p95 - median_value)
+    if negative_rate >= policy.stable_negative_rate and spread <= policy.stable_max_iqr_ms:
+        return "STABLE_OFFSET"
+    if upper_spread <= policy.low_variance_max_iqr_ms:
+        return "LOW_VARIANCE_OFFSET"
+    if negative_rate <= policy.sporadic_negative_rate:
+        return "SPORADIC_OUTLIERS"
+    if spread >= policy.unstable_min_iqr_ms:
+        return "UNSTABLE_OFFSET"
+    return "MIXED_DISTRIBUTION"
+
+
+def _delta_classification_severity(
+    classification: str,
+    quality_config: DataQualityConfig,
+) -> str:
+    policy = quality_config.quality.exchange_receipt_delta
+    severities = {
+        "STABLE_OFFSET": policy.stable_offset_severity,
+        "LOW_VARIANCE_OFFSET": policy.low_variance_offset_severity,
+        "MIXED_DISTRIBUTION": policy.mixed_distribution_severity,
+        "SPORADIC_OUTLIERS": policy.sporadic_outlier_severity,
+        "UNSTABLE_OFFSET": policy.unstable_offset_severity,
+        "INSUFFICIENT_EVIDENCE": policy.insufficient_evidence_severity,
+    }
+    return severities[classification]
+
+
+def _extend_calibrated_continuity_findings(
+    findings: list[QualityFinding],
+    metrics: SessionQualityMetrics,
+    quality_config: DataQualityConfig,
+    venue: Exchange,
+) -> None:
+    if venue == Exchange.COINBASE:
+        coinbase = quality_config.quality.coinbase_continuity
+        if metrics.continuity.coinbase_sequence_discontinuity_count > 0:
+            findings.append(
+                _finding(
+                    "CONTINUITY_COINBASE_PRODUCT_SEQUENCE_DIAGNOSTIC",
+                    "continuity",
+                    _configured_severity(coinbase.product_sequence_jump_severity),
+                    "coinbase_sequence_discontinuity_count",
+                    metrics.continuity.coinbase_sequence_discontinuity_count,
+                    None,
+                    (
+                        "Coinbase product-level sequence jumps are diagnostic under the "
+                        "current partial subscription unless trade identifiers show loss"
+                    ),
+                    {
+                        "partial_subscription": True,
+                        "duplicate_sequences": (
+                            metrics.continuity.coinbase_duplicate_sequence_count
+                        ),
+                        "nonmonotonic_sequences": (
+                            metrics.continuity.coinbase_nonmonotonic_sequence_count
+                        ),
+                    },
+                )
+            )
+        if metrics.continuity.coinbase_nonmonotonic_sequence_count > 0:
+            findings.append(
+                _finding(
+                    "CONTINUITY_COINBASE_NONMONOTONIC_SEQUENCE",
+                    "continuity",
+                    _configured_severity(coinbase.nonmonotonic_sequence_severity),
+                    "coinbase_nonmonotonic_sequence_count",
+                    metrics.continuity.coinbase_nonmonotonic_sequence_count,
+                    0,
+                    "Coinbase subscribed sequence observations are nonmonotonic",
+                    {"partial_subscription": True},
+                )
+            )
+        return
+
+    kraken_trade_anomalies = (
+        metrics.continuity.kraken_duplicate_trade_id_count
+        + metrics.continuity.kraken_nonmonotonic_trade_id_count
+    )
+    if kraken_trade_anomalies > 0:
+        findings.append(
+            _finding(
+                "CONTINUITY_KRAKEN_TRADE_ID_DIAGNOSTIC",
+                "continuity",
+                QualitySeverity.WARNING,
+                "kraken_trade_identifier_anomaly_count",
+                kraken_trade_anomalies,
+                0,
+                "Kraken trade identifier anomalies require review; ticker sequence is not analyzed",
+                {"kraken_ticker_sequence_checks_skipped": True},
+            )
+        )
 
 
 def _ratio(numerator: float, denominator: float) -> float:

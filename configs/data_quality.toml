@@ -1,4 +1,4 @@
-policy_version = "2d.1"
+policy_version = "2d.2"
 effective_date = 2026-07-30
 report_root = "data/quality"
 validated_manifest_root = "data/validated/manifests"
@@ -41,3 +41,49 @@ quarantine_on_sequence_anomaly = true
 quarantine_on_timestamp_outlier = true
 quarantine_on_duplicate_warning = true
 quarantine_on_stale_quote_warning = true
+
+[quality.exchange_receipt_delta]
+stable_offset_severity = "info"
+low_variance_offset_severity = "info"
+mixed_distribution_severity = "warning"
+sporadic_outlier_severity = "warning"
+unstable_offset_severity = "warning"
+insufficient_evidence_severity = "info"
+minimum_events_for_classification = 30
+stable_negative_rate = 0.8
+stable_max_iqr_ms = 1000
+low_variance_max_iqr_ms = 250
+sporadic_negative_rate = 0.05
+unstable_min_iqr_ms = 3000
+
+[quality.coinbase_continuity]
+product_sequence_jump_severity = "info"
+duplicate_related_sequence_severity = "info"
+nonmonotonic_sequence_severity = "warning"
+heartbeat_missing_match_severity = "warning"
+conflicting_trade_id_severity = "error"
+match_ticker_correspondence_minimum = 0.95
+match_ticker_grace_ms = 5000
+
+[quality.kraken_duplicates]
+heartbeat_duplicate_severity = "info"
+status_duplicate_severity = "info"
+subscription_ack_duplicate_severity = "info"
+ticker_duplicate_severity = "info"
+ticker_semantic_duplicate_severity = "info"
+trade_raw_duplicate_severity = "warning"
+identical_trade_duplicate_severity = "warning"
+conflicting_trade_duplicate_severity = "error"
+unsupported_duplicate_severity = "info"
+other_duplicate_severity = "warning"
+
+[quality.quote_freshness]
+quote_age_severity = "info"
+heartbeat_healthy_quiet_severity = "info"
+market_activity_without_bbo_change_severity = "info"
+probable_feed_inactivity_severity = "warning"
+connection_inactivity_severity = "warning"
+coinbase_unmatched_trade_severity = "warning"
+coinbase_conflicting_trade_severity = "error"
+connection_inactivity_threshold_ms = 10000
+coinbase_match_ticker_grace_ms = 5000

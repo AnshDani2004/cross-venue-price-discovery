@@ -166,3 +166,14 @@ Paired reports include the two session reports, local-receipt-time overlap, star
 paired findings, and paired disposition. Aggregate reports summarize counts and metric
 distributions across session reports. Validated dataset manifests reference accepted raw
 sessions and quality reports without copying or transforming raw data.
+
+## Phase 2D.1 Calibrated Quality Fields
+
+| Field | Values | Notes |
+| --- | --- | --- |
+| `observed_exchange_receipt_delta_pattern` | `STABLE_OFFSET`, `LOW_VARIANCE_OFFSET`, `MIXED_DISTRIBUTION`, `SPORADIC_OUTLIERS`, `UNSTABLE_OFFSET`, `INSUFFICIENT_EVIDENCE` | Diagnostic classification; not one-way latency. |
+| `coinbase_sequence_diagnostic` | `DIAGNOSTIC`, `NONMONOTONIC_SEQUENCE`, `HEARTBEAT_MISSING_MATCH_EVIDENCE`, `CONFLICTING_TRADE_ID` | Product sequence jumps are diagnostic under partial subscription unless stronger evidence appears. |
+| `coinbase_match_ticker_correspondence` | matched, absent-from-ticker, absent-from-match, lag, price/size/timestamp agreement | Used to distinguish ticker batching from missing subscribed messages. |
+| `kraken_duplicate_category` | `HEARTBEAT_DUPLICATE`, `STATUS_DUPLICATE`, `SUBSCRIPTION_ACK_DUPLICATE`, `TICKER_RAW_DUPLICATE`, `TICKER_SEMANTIC_DUPLICATE`, `TRADE_RAW_DUPLICATE`, `TRADE_ID_DUPLICATE_IDENTICAL`, `TRADE_ID_DUPLICATE_CONFLICTING`, `UNSUPPORTED_DUPLICATE`, `OTHER_DUPLICATE` | Typed duplicate category. Kraken ticker sequence analysis remains false. |
+| `quote_freshness_category` | `QUOTE_AGE`, `CONNECTION_INACTIVITY`, `HEARTBEAT_HEALTHY_QUIET_INTERVAL`, `MARKET_ACTIVITY_WITHOUT_BBO_CHANGE`, `MISSING_EXPECTED_QUOTE_CORRESPONDENCE`, `PROBABLE_FEED_INACTIVITY`, `RECONNECT_RELATED_GAP`, `SESSION_BOUNDARY_ARTIFACT` | Separates quote age from feed-liveness evidence. |
+| `before_after_comparison.findings[]` | old and new category, severity, observed value, threshold, evidence, disposition, semantic reason | Preserves original findings even when severity changes. |

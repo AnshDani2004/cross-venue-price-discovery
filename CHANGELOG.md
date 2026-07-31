@@ -21,3 +21,7 @@
 - Add Phase 2D data-quality validation with policy-driven session diagnostics, paired
   overlap analysis, explicit dispositions, dry-run validated manifest promotion,
   aggregation, controlled paired collection, and opt-in live quality tests.
+- Add Phase 2D.1 quality calibration with policy 2d.2, read-only host-clock
+  observation, negative-delta pattern diagnostics, Coinbase partial-subscription
+  continuity semantics, typed Kraken duplicates, quote-freshness semantics, and
+  calibrated paired reanalysis outputs.

@@ -22,8 +22,10 @@ from cross_venue.config import (
 )
 from cross_venue.quality.aggregation import aggregate_quality_reports
 from cross_venue.quality.analyzer import analyze_session_quality
+from cross_venue.quality.calibration import reanalyze_calibrated_pair
 from cross_venue.quality.collection import PairedCollectionResult, collect_paired_quality
 from cross_venue.quality.exceptions import PromotionError, QualityError
+from cross_venue.quality.investigation import investigate_quality_findings
 from cross_venue.quality.io import persist_model_json, portable_relative_path
 from cross_venue.quality.models import PairedQualityReport, SessionQualityReport
 from cross_venue.quality.overlap import build_paired_quality_report
@@ -235,6 +237,31 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/data_quality.toml"),
     )
+    investigate = subparsers.add_parser(
+        "investigate-quality-findings",
+        help="investigate quarantined paired quality findings without mutating source reports",
+    )
+    investigate.add_argument("--paired-report", type=Path, required=True)
+    investigate.add_argument("--storage-config", type=Path, default=Path("configs/storage.toml"))
+    investigate.add_argument(
+        "--quality-policy",
+        type=Path,
+        default=Path("configs/data_quality.toml"),
+    )
+    calibrated = subparsers.add_parser(
+        "reanalyze-calibrated-pair",
+        help="reanalyze an existing paired report under the active calibrated quality policy",
+    )
+    calibrated.add_argument("--paired-report", type=Path, required=True)
+    calibrated.add_argument(
+        "--storage-config",
+        type=Path,
+        default=Path("configs/storage.toml"),
+    )
+    calibrated.add_argument(
+        "--quality-policy", type=Path, default=Path("configs/data_quality.toml")
+    )
+    calibrated.add_argument("--expected-commit")
     paired = subparsers.add_parser(
         "collect-paired-quality",
         help="run bounded paired Coinbase/Kraken archival collection and quality analysis",
@@ -407,12 +434,41 @@ def main(
             return 1
         print(message)
         return 0
+    if args.command == "investigate-quality-findings":
+        storage_config = load_storage_config(args.storage_config)
+        quality_config = load_data_quality_config(args.quality_policy)
+        try:
+            investigation_result = investigate_quality_findings(
+                args.paired_report,
+                storage_config=storage_config,
+                quality_config=quality_config,
+            )
+        except (QualityError, StorageError) as exc:
+            print(f"Investigation blocked: {exc}")
+            return 1
+        print(investigation_result.to_text())
+        return 0
+    if args.command == "reanalyze-calibrated-pair":
+        storage_config = load_storage_config(args.storage_config)
+        quality_config = load_data_quality_config(args.quality_policy)
+        try:
+            calibrated_result = reanalyze_calibrated_pair(
+                args.paired_report,
+                storage_config=storage_config,
+                quality_config=quality_config,
+                expected_commit=args.expected_commit,
+            )
+        except (QualityError, StorageError) as exc:
+            print(f"Calibrated reanalysis blocked: {exc}")
+            return 1
+        print(calibrated_result.to_text())
+        return 0
     if args.command == "collect-paired-quality":
         storage_config = load_storage_config(args.storage_config)
         quality_config = load_data_quality_config(args.quality_policy)
         paired_command_runner = paired_quality_runner or _run_collect_paired_quality
         try:
-            result = asyncio.run(
+            paired_collection_result = asyncio.run(
                 paired_command_runner(
                     storage_config,
                     quality_config,
@@ -423,8 +479,8 @@ def main(
         except (ValueError, QualityError, StorageError) as exc:
             print(f"Paired quality collection failed: {exc}")
             return 1
-        print(result.to_text())
-        return 0 if result.paired_report.disposition.value != "REJECTED" else 1
+        print(paired_collection_result.to_text())
+        return 0 if paired_collection_result.paired_report.disposition.value != "REJECTED" else 1
     return 0
 
 

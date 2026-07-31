@@ -46,6 +46,7 @@ markers = [
   "live: opt-in public exchange smoke tests",
   "live_persistence: opt-in public exchange persistence smoke tests",
   "live_quality: opt-in paired public exchange quality validation tests",
+  "live_calibration: opt-in bounded paired public exchange calibration pilots",
   "property: property-based tests",
   "regression: locked behavior tests for previously fixed issues",
 ]

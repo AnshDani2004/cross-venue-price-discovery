@@ -102,12 +102,28 @@ def coinbase_trade(sequence: int, trade_id: int, receipt_second: int) -> str:
 
 
 def coinbase_ticker(
-    sequence: int, receipt_second: int, *, bid: str = "100.00", ask: str = "100.10"
+    sequence: int,
+    receipt_second: int,
+    *,
+    bid: str = "100.00",
+    ask: str = "100.10",
+    trade_id: int | None = None,
 ) -> str:
+    trade_id_fragment = "" if trade_id is None else f'"trade_id":{trade_id},'
     return (
         '{"type":"ticker","sequence":'
         f'{sequence},"product_id":"BTC-USD","best_bid":"{bid}",'
         f'"best_bid_size":"1.0","best_ask":"{ask}","best_ask_size":"2.0",'
+        + trade_id_fragment
+        + f'"time":"2026-07-30T21:00:{receipt_second:02d}Z"'
+        "}"
+    )
+
+
+def coinbase_heartbeat(sequence: int, last_trade_id: int, receipt_second: int) -> str:
+    return (
+        '{"type":"heartbeat","sequence":'
+        f'{sequence},"last_trade_id":{last_trade_id},"product_id":"BTC-USD",'
         f'"time":"2026-07-30T21:00:{receipt_second:02d}Z"'
         "}"
     )
@@ -129,6 +145,10 @@ def kraken_ticker(receipt_second: int, *, bid: str = "100.00", ask: str = "100.1
         f'"timestamp":"2026-07-30T21:00:{receipt_second:02d}Z"'
         "}]}"
     )
+
+
+def kraken_heartbeat() -> str:
+    return '{"channel":"heartbeat"}'
 
 
 async def make_session(

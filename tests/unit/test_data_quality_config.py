@@ -9,9 +9,24 @@ from cross_venue.config import load_data_quality_config
 def test_data_quality_config_loads_defaults() -> None:
     config = load_data_quality_config(Path("configs/data_quality.toml"))
 
-    assert config.policy_version == "2d.1"
+    assert config.policy_version == "2d.2"
     assert config.quality.coverage.minimum_cross_venue_overlap_seconds == 90
     assert config.quality.timestamps.stale_quote_threshold_ms == 2000
+    assert config.quality.exchange_receipt_delta.stable_offset_severity == "info"
+    assert config.quality.kraken_duplicates.heartbeat_duplicate_severity == "info"
+
+
+def test_data_quality_config_loads_historical_2d1_shape(tmp_path: Path) -> None:
+    path = tmp_path / "historical.toml"
+    text = Path("configs/data_quality.toml").read_text(encoding="utf-8")
+    text = text.replace('policy_version = "2d.2"', 'policy_version = "2d.1"')
+    text = text.split("[quality.exchange_receipt_delta]")[0].rstrip() + "\n"
+    path.write_text(text, encoding="utf-8")
+
+    config = load_data_quality_config(path)
+
+    assert config.policy_version == "2d.1"
+    assert config.quality.exchange_receipt_delta.stable_offset_severity == "info"
 
 
 def test_data_quality_config_rejects_unknown_fields(tmp_path: Path) -> None:
