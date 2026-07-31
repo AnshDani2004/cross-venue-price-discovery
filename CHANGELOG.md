@@ -25,3 +25,6 @@
   observation, negative-delta pattern diagnostics, Coinbase partial-subscription
   continuity semantics, typed Kraken duplicates, quote-freshness semantics, and
   calibrated paired reanalysis outputs.
+- Add Phase 3A deterministic normalization with validated-manifest replay, exact-decimal
+  trade and top-of-book Parquet outputs, raw-record outcome tables, semantic hashes,
+  reconciliation, validation, DuckDB views, and determinism checks.

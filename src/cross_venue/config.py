@@ -30,6 +30,9 @@ TimestampPrecision = Literal["microsecond"]
 TieBreakerField = Literal["local_receipt_ts", "venue", "sequence_number", "message_type"]
 ArchiveFormat = Literal["jsonl"]
 ChecksumAlgorithm = Literal["sha256"]
+ParquetCompression = Literal["zstd", "snappy", "none"]
+TimestampUnit = Literal["ns"]
+DataPageVersion = Literal["1.0", "2.0"]
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -691,3 +694,56 @@ def load_data_quality_config(path: Path) -> DataQualityConfig:
     """Load and validate Phase 2D data-quality policy."""
 
     return DataQualityConfig.model_validate(_load_toml(path))
+
+
+class NormalizationConfig(BaseModel):
+    """Validated Phase 3A deterministic normalization settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    normalization_schema_version: str = Field(min_length=1)
+    output_root: Path = Path("data/normalized")
+    parquet_compression: ParquetCompression = "zstd"
+    parquet_compression_level: int | None = Field(default=6, ge=1)
+    parquet_row_group_size: int = Field(gt=0)
+    decimal_precision: int = Field(gt=0)
+    decimal_scale: int = Field(ge=0)
+    timestamp_unit: TimestampUnit = "ns"
+    preserve_raw_duplicates: bool = True
+    write_raw_record_outcomes: bool = True
+    write_duckdb_catalog: bool = True
+    require_validated_manifest: bool = True
+    require_quality_policy_version: str = Field(min_length=1)
+    require_clean_working_tree_for_final_run: bool = True
+    dictionary_encoding: bool = True
+    write_statistics: bool = True
+    data_page_version: DataPageVersion = "2.0"
+    use_compliant_nested_type: bool = True
+
+    @field_validator("output_root")
+    @classmethod
+    def output_root_must_be_local(cls, value: Path) -> Path:
+        text = str(value)
+        if "://" in text:
+            raise ValueError("normalization output root must be a local filesystem path")
+        return value.expanduser()
+
+    @model_validator(mode="after")
+    def normalization_settings_are_phase_3a_safe(self) -> NormalizationConfig:
+        if self.decimal_scale >= self.decimal_precision:
+            raise ValueError("decimal scale must be less than precision")
+        if not self.preserve_raw_duplicates:
+            raise ValueError("Phase 3A must preserve raw duplicates")
+        if not self.write_raw_record_outcomes:
+            raise ValueError("Phase 3A must write raw-record outcomes")
+        if not self.require_validated_manifest:
+            raise ValueError("Phase 3A requires validated manifests")
+        if self.parquet_compression == "none" and self.parquet_compression_level is not None:
+            raise ValueError("compression level must be omitted when compression is none")
+        return self
+
+
+def load_normalization_config(path: Path) -> NormalizationConfig:
+    """Load and validate Phase 3A normalization configuration."""
+
+    return NormalizationConfig.model_validate(_load_toml(path))

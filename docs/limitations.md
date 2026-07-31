@@ -87,6 +87,17 @@
 - Accepted data does not imply predictive usefulness.
 - No lead-lag conclusion has been tested.
 
+## Phase 3A
+
+- The first normalized input dataset is one short accepted paired session.
+- Normalization correctness does not imply representative research data.
+- No deduplication is performed.
+- No clock correction is performed.
+- No lead-lag analysis is performed.
+- No predictive or trading conclusion is supported.
+- Physical Parquet checksums may depend on library versions outside the supported local
+  environment; semantic hashes are the cross-run logical guarantee.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

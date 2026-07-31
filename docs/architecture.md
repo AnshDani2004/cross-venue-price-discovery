@@ -111,6 +111,27 @@ Immutable raw archive
   -> validated dataset manifest only when all sessions and the pair are accepted
 ```
 
+## Phase 3A Normalization Flow
+
+Phase 3A starts only from a finalized validated dataset manifest and replays immutable
+raw archive records through the existing venue parsers.
+
+```text
+Validated dataset manifest
+  -> source manifest and shard hash verification
+  -> deterministic raw archive replay
+  -> existing Coinbase/Kraken parsers
+  -> normalized trade and top-of-book rows
+  -> raw-record normalization outcomes
+  -> strict reconciliation
+  -> explicit-schema Parquet files
+  -> normalization manifest and semantic hashes
+  -> DuckDB inspection views
+```
+
+Phase 3A does not compute features, labels, lead-lag statistics, models, backtests,
+execution simulation, PnL, or trading signals.
+
 ## Timestamp Contract
 
 Every event must preserve:
@@ -159,3 +180,9 @@ documented public trade and top-of-book channels only. Feature engineering, labe
 models, backtests, fair-value estimation, and trading simulation remain future work.
 Phase 2 must not add authenticated exchange clients, order submission, or trading
 strategy logic.
+
+## Phase 03A Boundary
+
+Phase 3A creates deterministic analytical storage from accepted raw data. It preserves
+raw duplicates and emits one raw-record outcome per source record. Research conclusions
+remain out of scope until later phases.

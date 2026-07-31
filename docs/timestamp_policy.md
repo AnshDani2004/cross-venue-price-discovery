@@ -72,3 +72,7 @@ be unavailable when the platform requires administrator access.
 Normalized timestamps use microsecond precision in Phase 01 contracts. If a future venue
 or storage layer supports finer precision, the schema version and timestamp policy must
 be updated before using it in research.
+
+Phase 3A Parquet tables store UTC Arrow timestamps and preserve raw record order through
+`source_raw_record_index`. Phase 3A applies no clock-offset correction, venue-clock
+alignment, or latency inference.

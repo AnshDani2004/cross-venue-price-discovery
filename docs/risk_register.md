@@ -64,3 +64,14 @@ Low, Medium, or High.
 | R-DATA-021 | Data | Quote age alone is treated as feed failure. | Medium | Medium | Separate quote age, connection inactivity, heartbeat-healthy quiet intervals, and market activity without BBO change. | Mitigated by policy 2d.2; monitor. | 2D.1+ | Data |
 | R-DATA-022 | Data | Calibration sessions are too similar to establish robustness. | High | Medium | Report sequential-pilot limitation and require later diverse collection before research conclusions. | Open | 2D.1+ | Research |
 | R-ENG-021 | Engineering | Policy-version drift makes accepted datasets ambiguous. | Medium | High | Record policy version and policy hash in calibrated outputs and manifests. | Open | 2D.1+ | Engineering |
+| R-DATA-023 | Data | Decimal overflow or scale mismatch changes prices or quantities. | Medium | High | Use Decimal inputs and Arrow `decimal128(38,18)` with exact conversion checks. | Open | 3A+ | Data |
+| R-DATA-024 | Data | Normalization schema drift makes datasets incomparable. | Medium | High | Version normalization config and manifest, reject unknown config fields, and record semantic hashes. | Open | 3A+ | Data |
+| R-DATA-025 | Data | Parser-version drift changes normalized rows. | Medium | High | Record normalizer Git commit and rerun determinism checks after parser changes. | Open | 3A+ | Engineering |
+| R-DATA-026 | Data | Nondeterministic output breaks replay reproducibility. | Medium | High | Stable event IDs, deterministic row order, semantic hashes, and repeat normalization checks. | Open | 3A+ | Engineering |
+| R-DATA-027 | Data | Raw records are silently excluded. | Medium | High | Require one raw-record outcome row per raw archive record. | Open | 3A+ | Data |
+| R-DATA-028 | Data | Multi-event raw frames lose child-order lineage. | Medium | Medium | Store deterministic `normalized_child_index` per parser output event. | Open | 3A+ | Data |
+| R-DATA-029 | Data | Event-ID collision corrupts joins. | Low | High | Use SHA-256 over canonical identity components and validate uniqueness. | Open | 3A+ | Engineering |
+| R-DATA-030 | Data | Partition mismatch hides missing output files. | Medium | Medium | Record output file checksums and validate every manifest-listed file. | Open | 3A+ | Engineering |
+| R-DATA-031 | Data | Source evidence mutates during replay. | Low | High | Verify source hashes before and after replay before finalizing. | Open | 3A+ | Data |
+| R-DATA-032 | Data | DuckDB type coercion changes analytical interpretation. | Medium | Medium | Build views over explicit-schema Parquet and validate row counts/types. | Open | 3A+ | Engineering |
+| R-DATA-033 | Data | Mixed normalization versions enter one analysis. | Medium | High | Require normalized dataset ID and semantic hash in later research records. | Open | 3A+ | Research |
