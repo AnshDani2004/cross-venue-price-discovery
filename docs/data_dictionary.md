@@ -177,3 +177,44 @@ sessions and quality reports without copying or transforming raw data.
 | `kraken_duplicate_category` | `HEARTBEAT_DUPLICATE`, `STATUS_DUPLICATE`, `SUBSCRIPTION_ACK_DUPLICATE`, `TICKER_RAW_DUPLICATE`, `TICKER_SEMANTIC_DUPLICATE`, `TRADE_RAW_DUPLICATE`, `TRADE_ID_DUPLICATE_IDENTICAL`, `TRADE_ID_DUPLICATE_CONFLICTING`, `UNSUPPORTED_DUPLICATE`, `OTHER_DUPLICATE` | Typed duplicate category. Kraken ticker sequence analysis remains false. |
 | `quote_freshness_category` | `QUOTE_AGE`, `CONNECTION_INACTIVITY`, `HEARTBEAT_HEALTHY_QUIET_INTERVAL`, `MARKET_ACTIVITY_WITHOUT_BBO_CHANGE`, `MISSING_EXPECTED_QUOTE_CORRESPONDENCE`, `PROBABLE_FEED_INACTIVITY`, `RECONNECT_RELATED_GAP`, `SESSION_BOUNDARY_ARTIFACT` | Separates quote age from feed-liveness evidence. |
 | `before_after_comparison.findings[]` | old and new category, severity, observed value, threshold, evidence, disposition, semantic reason | Preserves original findings even when severity changes. |
+
+## Phase 3A Normalized Tables
+
+All Phase 3A Parquet tables include deterministic lineage from the validated manifest to
+the raw archive record. Financial values use `decimal128(38,18)` and timestamps use UTC
+Arrow timestamps.
+
+### Common Lineage Fields
+
+| Field | Meaning |
+| --- | --- |
+| `normalized_schema_version` | Phase 3A schema version, initially `3a.1`. |
+| `validated_dataset_manifest_id` | Source validated dataset manifest ID. |
+| `validated_dataset_manifest_sha256` | SHA-256 of the validated manifest used as input. |
+| `paired_collection_id` | Source paired collection ID. |
+| `venue`, `canonical_instrument`, `venue_symbol`, `session_id` | Source session identifiers. |
+| `connection_epoch` | Connection epoch, currently `0` for Phase 2C archives. |
+| `source_shard_relative_path`, `source_shard_sha256` | Source raw shard lineage. |
+| `source_raw_record_index`, `source_raw_frame_sha256` | Exact raw-record lineage. |
+| `normalized_child_index` | Parser-output child index for multi-event raw frames. |
+| `normalized_event_id` | SHA-256 of canonical identity components; independent of output path and execution time. |
+| `is_raw_frame_duplicate`, `raw_frame_duplicate_count`, `raw_frame_duplicate_occurrence_index` | Exact raw-frame duplicate metadata within a session. |
+
+### Trade Rows
+
+Trade Parquet rows add `trade_id`, `price`, `quantity`, `side`, `side_semantics`,
+`source_trade_id`, nullable `source_sequence`, and nullable `source_checksum`. The stored
+`side` is the existing parser's normalized aggressor-side field.
+
+### Top-Of-Book Rows
+
+Top-of-book Parquet rows add `bid_price`, `bid_size`, `ask_price`, `ask_size`, nullable
+`source_sequence`, and nullable `source_checksum`. Phase 3A does not add midpoint,
+spread, microprice, imbalance, or predictive fields.
+
+### Raw Record Outcomes
+
+`raw_record_outcomes` contains exactly one row per raw archive record. It records
+`normalization_outcome`, trade/BBO row counts, parse status, bounded parse error text,
+unsupported reason, frame type, source message type, source channel, and duplicate
+metadata. It never embeds full raw payloads.

@@ -5,6 +5,10 @@ version that are referenced by a validated dataset manifest. Quarantined and rej
 sessions require resolution before research use and must not be silently cleaned into
 exploratory datasets.
 
+After Phase 3A, research must begin from a normalization manifest, not directly from raw
+session directories. Every later result must record the normalized dataset ID and
+semantic dataset hash. Phase 3A itself produces no price-discovery conclusion.
+
 Review date: 2026-07-31.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a

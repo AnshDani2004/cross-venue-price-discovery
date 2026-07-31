@@ -22,6 +22,8 @@ without skipping data integrity, timestamp discipline, or risk controls.
 - Phase 2D.1: Quality calibration complete with policy 2d.2; at least one paired
   dataset was accepted and manifested. Phase 3 normalization may begin on the validated
   manifest only.
+- Phase 3A: Deterministic normalization implemented; accepted raw data can be replayed
+  into validated Parquet and DuckDB datasets. Exploratory research has not started.
 
 No normalized datasets, predictive models, fair-value models, backtests, trading
 policies, or execution simulators have been implemented.
@@ -86,6 +88,9 @@ python -m cross_venue analyze-session-quality --session-path data/raw/venue=coin
 python -m cross_venue collect-paired-quality --duration-seconds 120 --max-messages-per-venue 20000
 python -m cross_venue reanalyze-calibrated-pair --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
 python -m cross_venue promote-dataset --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
+python -m cross_venue normalize-dataset --validated-manifest data/validated/manifests/<validated_manifest>.json
+python -m cross_venue validate-normalized-dataset --normalization-manifest data/normalized/dataset=<normalized_dataset_id>/manifest/normalization_manifest.json
+python -m cross_venue build-normalized-catalog --normalization-manifest data/normalized/dataset=<normalized_dataset_id>/manifest/normalization_manifest.json
 ```
 
 The smoke collector is bounded, public-only, and no-write. It prints an in-memory

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,8 +19,14 @@ from cross_venue.config import (
     DataQualityConfig,
     StorageConfig,
     load_data_quality_config,
+    load_normalization_config,
     load_storage_config,
 )
+from cross_venue.normalization.catalog import build_normalized_catalog
+from cross_venue.normalization.determinism import verify_normalization_determinism
+from cross_venue.normalization.exceptions import NormalizationError
+from cross_venue.normalization.normalizer import normalize_dataset
+from cross_venue.normalization.validation import validate_normalized_dataset
 from cross_venue.quality.aggregation import aggregate_quality_reports
 from cross_venue.quality.analyzer import analyze_session_quality
 from cross_venue.quality.calibration import reanalyze_calibrated_pair
@@ -274,6 +281,47 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/data_quality.toml"),
     )
+    normalize = subparsers.add_parser(
+        "normalize-dataset",
+        help="replay an accepted validated manifest into deterministic normalized Parquet",
+    )
+    normalize.add_argument("--validated-manifest", type=Path, required=True)
+    normalize.add_argument(
+        "--normalization-config",
+        type=Path,
+        default=Path("configs/normalization.toml"),
+    )
+    normalize.add_argument("--storage-config", type=Path, default=Path("configs/storage.toml"))
+    normalize.add_argument("--quality-policy", type=Path, default=Path("configs/data_quality.toml"))
+    normalize.add_argument("--output-root", type=Path)
+    normalize.add_argument("--expected-commit")
+    normalize.add_argument("--dry-run", action="store_true")
+    validate_normalized = subparsers.add_parser(
+        "validate-normalized-dataset",
+        help="validate a Phase 3A normalization manifest and output files",
+    )
+    validate_normalized.add_argument("--normalization-manifest", type=Path, required=True)
+    catalog = subparsers.add_parser(
+        "build-normalized-catalog",
+        help="build DuckDB views over a normalized dataset",
+    )
+    catalog.add_argument("--normalization-manifest", type=Path, required=True)
+    deterministic = subparsers.add_parser(
+        "verify-normalization-determinism",
+        help="normalize twice into temporary roots and compare deterministic outputs",
+    )
+    deterministic.add_argument("--validated-manifest", type=Path, required=True)
+    deterministic.add_argument(
+        "--normalization-config",
+        type=Path,
+        default=Path("configs/normalization.toml"),
+    )
+    deterministic.add_argument("--storage-config", type=Path, default=Path("configs/storage.toml"))
+    deterministic.add_argument(
+        "--quality-policy",
+        type=Path,
+        default=Path("configs/data_quality.toml"),
+    )
     return parser
 
 
@@ -481,6 +529,60 @@ def main(
             return 1
         print(paired_collection_result.to_text())
         return 0 if paired_collection_result.paired_report.disposition.value != "REJECTED" else 1
+    if args.command == "normalize-dataset":
+        storage_config = load_storage_config(args.storage_config)
+        quality_config = load_data_quality_config(args.quality_policy)
+        normalization_config = load_normalization_config(args.normalization_config)
+        try:
+            result = normalize_dataset(
+                args.validated_manifest,
+                storage_config=storage_config,
+                quality_config=quality_config,
+                normalization_config=normalization_config,
+                dry_run=args.dry_run,
+                output_root=args.output_root,
+                expected_commit=args.expected_commit,
+            )
+        except NormalizationError as exc:
+            print(f"Normalization failed: {exc}")
+            return 1
+        if isinstance(result, dict):
+            print(json_dumps(result))
+        else:
+            print(result.to_text())
+        return 0
+    if args.command == "validate-normalized-dataset":
+        try:
+            normalized_validation_report = validate_normalized_dataset(args.normalization_manifest)
+        except NormalizationError as exc:
+            print(f"Normalized dataset invalid: {exc}")
+            return 1
+        print(json_dumps(normalized_validation_report))
+        return 0
+    if args.command == "build-normalized-catalog":
+        try:
+            catalog_report = build_normalized_catalog(args.normalization_manifest)
+        except NormalizationError as exc:
+            print(f"Catalog build failed: {exc}")
+            return 1
+        print(json_dumps(catalog_report))
+        return 0
+    if args.command == "verify-normalization-determinism":
+        storage_config = load_storage_config(args.storage_config)
+        quality_config = load_data_quality_config(args.quality_policy)
+        normalization_config = load_normalization_config(args.normalization_config)
+        try:
+            determinism_report = verify_normalization_determinism(
+                args.validated_manifest,
+                storage_config=storage_config,
+                quality_config=quality_config,
+                normalization_config=normalization_config,
+            )
+        except NormalizationError as exc:
+            print(f"Determinism verification failed: {exc}")
+            return 1
+        print(json_dumps(determinism_report))
+        return 0
     return 0
 
 
@@ -576,3 +678,9 @@ def _paired_report_text(report: PairedQualityReport, path: Path) -> str:
             f"Report: {path}",
         ]
     )
+
+
+def json_dumps(payload: object) -> str:
+    """Return deterministic pretty JSON for CLI diagnostics."""
+
+    return json.dumps(payload, indent=2, sort_keys=True, default=str)

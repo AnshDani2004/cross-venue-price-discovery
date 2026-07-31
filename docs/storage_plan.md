@@ -1,6 +1,6 @@
 # Storage Plan
 
-Review date: 2026-07-30.
+Review date: 2026-07-31.
 
 This plan defines local research storage after Phase 2C raw archival. Phase 2C persists
 exact public WebSocket frames, per-session manifests, quality summaries, and checksums.
@@ -61,3 +61,26 @@ Phase 2D quality reports are separate artifacts under ignored `data/quality`. Va
 dataset manifests live under ignored `data/validated/manifests`, reference accepted raw
 sessions and quality report hashes, and do not move, rewrite, deduplicate, interpolate,
 or transform raw frames.
+
+## Phase 3A Normalized Layout
+
+Phase 3A writes ignored deterministic outputs under:
+
+```text
+data/normalized/dataset=<normalized_dataset_id>/
+  trades/venue=<venue>/date=<YYYY-MM-DD>/session=<session-id>/part-00000.parquet
+  top_of_book/venue=<venue>/date=<YYYY-MM-DD>/session=<session-id>/part-00000.parquet
+  raw_record_outcomes/venue=<venue>/date=<YYYY-MM-DD>/session=<session-id>/part-00000.parquet
+  manifest/normalization_manifest.json
+  validation/validation_report.json
+  catalog/normalized.duckdb
+```
+
+Parquet files use explicit PyArrow schemas, zstd compression, deterministic file names,
+UTC timestamps, and `decimal128(38,18)` financial values. Finalization uses a
+`.partial` dataset directory and publishes only after reconciliation, output checksums,
+semantic hashes, and source hash reverification pass.
+
+DuckDB catalogs are local ignored inspection catalogs that expose views over Parquet
+files. They are not authoritative storage and can be rebuilt from the normalization
+manifest.
