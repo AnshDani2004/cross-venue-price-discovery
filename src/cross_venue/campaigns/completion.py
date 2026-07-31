@@ -10,6 +10,7 @@ from cross_venue.campaigns.models import (
     AttemptSummary,
     CampaignConfig,
     CampaignRegistry,
+    CampaignRole,
     CampaignStatus,
     CompletionRequirements,
     CompletionState,
@@ -77,6 +78,15 @@ def evaluate_completion(
         ),
         registry_and_ledger_valid=registry_and_ledger_valid,
     )
+    if config.campaign_role == CampaignRole.DEVELOPMENT_SMOKE:
+        requirements = requirements.model_copy(
+            update={
+                "accepted_sessions": False,
+                "accepted_overlap_seconds": False,
+                "calendar_dates": False,
+                "time_buckets": False,
+            }
+        )
     status = CompletionState.SATISFIED if requirements.satisfied else CompletionState.UNSATISFIED
     evidence: dict[str, object] = {
         "accepted_attempt_count": len(accepted),
@@ -123,6 +133,15 @@ def recalculate_registry(registry: CampaignRegistry) -> CampaignRegistry:
         ),
         registry_and_ledger_valid=True,
     )
+    if registry.campaign_role == CampaignRole.DEVELOPMENT_SMOKE:
+        requirements = requirements.model_copy(
+            update={
+                "accepted_sessions": False,
+                "accepted_overlap_seconds": False,
+                "calendar_dates": False,
+                "time_buckets": False,
+            }
+        )
     completion_state = (
         CompletionState.SATISFIED if requirements.satisfied else CompletionState.UNSATISFIED
     )

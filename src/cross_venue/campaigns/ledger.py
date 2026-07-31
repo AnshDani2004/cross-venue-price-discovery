@@ -169,6 +169,13 @@ def rebuild_registry_from_ledger(
             planned_slots[attempt.slot_id] = state.model_copy(
                 update={"status": SlotStatus(attempt.attempt_status.value)}
             )
+        elif event.event_type == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED:
+            registry = registry.model_copy(
+                update={
+                    "runtime_git_commit": event.payload["new_runtime_commit"],
+                    "runtime_working_tree_clean": event.payload["runtime_working_tree_clean"],
+                }
+            )
     return registry.model_copy(
         update={
             "planned_slots": planned_slots,

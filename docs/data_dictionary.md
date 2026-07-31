@@ -222,9 +222,9 @@ metadata. It never embeds full raw payloads.
 ## Phase 3B Campaign Data
 
 The campaign registry is an ignored JSON document under `data/campaigns` that summarizes
-campaign status, fixed slots, attempts, accepted overlap, calendar-date coverage,
-time-bucket coverage, and completion requirements. The append-only ledger is a JSONL
-hash chain with event index, event type, occurrence timestamp, optional slot ID,
+campaign role, campaign status, fixed slots, attempts, accepted overlap, calendar-date
+coverage, time-bucket coverage, and completion requirements. The append-only ledger is a
+JSONL hash chain with event index, event type, occurrence timestamp, optional slot ID,
 optional campaign attempt ID, bounded payload, previous event hash, and event hash.
 
 Slots include `slot_id`, `slot_type`, UTC and local planned start timestamps, a
@@ -235,8 +235,9 @@ manifest references, failure classification, bounded failure message, inclusion 
 and exclusion reason.
 
 Validated campaign manifests include only accepted attempts and preserve excluded
-attempt summaries. Campaign-level normalized rows add nullable `campaign_id`, `slot_id`,
-`campaign_attempt_id`, `time_bucket`, `validated_campaign_manifest_id`, and
-`validated_campaign_manifest_sha256`. Normalized trade and top-of-book rows also include
-`source_event_id`, a deterministic source-lineage ID that is stable across individual
-pair and campaign normalization runs.
+attempt summaries. They also record `campaign_role` so exploratory intraday evidence is
+not confused with multi-day validation evidence. Campaign-level normalized rows add
+nullable `campaign_id`, `slot_id`, `campaign_attempt_id`, `time_bucket`,
+`validated_campaign_manifest_id`, and `validated_campaign_manifest_sha256`. Normalized
+trade and top-of-book rows also include `source_event_id`, a deterministic source-lineage
+ID that is stable across individual pair and campaign normalization runs.

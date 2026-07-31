@@ -270,6 +270,7 @@ def load_normalization_inputs(
             normalization_config=normalization_config,
             campaign_lineage={
                 "campaign_id": campaign.campaign_id,
+                "campaign_role": campaign.campaign_role.value,
                 "slot_id": entry.slot_id,
                 "campaign_attempt_id": entry.campaign_attempt_id,
                 "time_bucket": entry.time_bucket.value,
@@ -891,6 +892,11 @@ def _normalization_manifest(
             if bundle.campaign_manifest is not None
             else None
         ),
+        "campaign_role": (
+            bundle.campaign_manifest.campaign_role.value
+            if bundle.campaign_manifest is not None
+            else None
+        ),
         "validated_campaign_manifest_sha256": bundle.campaign_manifest_sha256,
         "quality_policy_version": primary.validated_manifest.quality_policy_version,
         "quality_policy_sha256": sha256_file(Path("configs/data_quality.toml")),
@@ -983,6 +989,11 @@ def _dry_run_plan(
         ),
         "validated_campaign_manifest_id": (
             bundle.campaign_manifest.validated_campaign_manifest_id
+            if bundle.campaign_manifest is not None
+            else None
+        ),
+        "campaign_role": (
+            bundle.campaign_manifest.campaign_role.value
             if bundle.campaign_manifest is not None
             else None
         ),

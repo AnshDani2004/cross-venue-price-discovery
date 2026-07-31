@@ -5,15 +5,28 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from cross_venue.schemas import Exchange
 
-CAMPAIGN_SCHEMA_VERSION = "3b.1"
-CAMPAIGN_ID = "btc-usd-coinbase-kraken-2026-07-31-v1"
+CAMPAIGN_SCHEMA_VERSION = "3b.2"
+LEGACY_CAMPAIGN_SCHEMA_VERSION = "3b.1"
+DEFAULT_PHASE_3B_CAMPAIGN_ID = "btc-usd-coinbase-kraken-2026-07-31-v1"
+CAMPAIGN_ID_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{1,126}[a-z0-9])?$"
+CampaignId = Annotated[
+    str,
+    Field(min_length=3, max_length=128, pattern=CAMPAIGN_ID_PATTERN),
+]
+_CAMPAIGN_ID_ADAPTER = TypeAdapter(CampaignId)
+
+
+def validate_campaign_id(value: str) -> CampaignId:
+    """Validate a campaign ID without normalizing it."""
+
+    return _CAMPAIGN_ID_ADAPTER.validate_python(value)
 
 
 class CampaignStatus(StrEnum):
@@ -69,6 +82,20 @@ class TimeBucket(StrEnum):
     EVENING = "EVENING"
 
 
+class CampaignRole(StrEnum):
+    """Research role for a collection campaign."""
+
+    MULTI_DAY_VALIDATION = "MULTI_DAY_VALIDATION"
+    EXPLORATORY_INTRADAY = "EXPLORATORY_INTRADAY"
+    DEVELOPMENT_SMOKE = "DEVELOPMENT_SMOKE"
+
+
+class RuntimeMigrationReason(StrEnum):
+    """Allowed reasons for changing a campaign runtime before collection starts."""
+
+    GENERIC_ENGINE_BEFORE_FIRST_COLLECTION = "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION"
+
+
 class FailureClassification(StrEnum):
     """Bounded failure classes for campaign attempts."""
 
@@ -95,6 +122,7 @@ class MissedReason(StrEnum):
     NETWORK_UNAVAILABLE = "NETWORK_UNAVAILABLE"
     SLOT_WINDOW_EXPIRED = "SLOT_WINDOW_EXPIRED"
     CAMPAIGN_ALREADY_COMPLETE = "CAMPAIGN_ALREADY_COMPLETE"
+    CAMPAIGN_INITIALIZED_AFTER_SLOT_WINDOW = "CAMPAIGN_INITIALIZED_AFTER_SLOT_WINDOW"
 
 
 class InclusionStatus(StrEnum):
@@ -128,6 +156,7 @@ class LedgerEventType(StrEnum):
     ATTEMPT_REJECTED = "ATTEMPT_REJECTED"
     ATTEMPT_FAILED = "ATTEMPT_FAILED"
     ATTEMPT_ABORTED = "ATTEMPT_ABORTED"
+    CAMPAIGN_RUNTIME_MIGRATED = "CAMPAIGN_RUNTIME_MIGRATED"
     CAMPAIGN_COMPLETION_EVALUATED = "CAMPAIGN_COMPLETION_EVALUATED"
     CAMPAIGN_FINALIZED = "CAMPAIGN_FINALIZED"
 
@@ -163,17 +192,19 @@ class CampaignSlot(BaseModel):
 
 
 class CampaignConfig(BaseModel):
-    """Strict fixed campaign configuration."""
+    """Strict collection campaign configuration."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    campaign_schema_version: Literal["3b.1"]
-    campaign_id: Literal["btc-usd-coinbase-kraken-2026-07-31-v1"]
+    campaign_schema_version: Literal["3b.1", "3b.2"]
+    campaign_id: CampaignId
+    campaign_role: CampaignRole = CampaignRole.MULTI_DAY_VALIDATION
     instrument: Literal["BTC-USD"]
     venues: tuple[Exchange, Exchange]
     timezone: str
     quality_policy_version: Literal["2d.2"]
     normalization_schema_version: str = Field(min_length=1)
+    runtime_git_commit: str | None = Field(default=None, min_length=7, max_length=64)
     requested_duration_seconds: int = Field(gt=0, le=7200)
     minimum_overlap_seconds_per_accepted_session: int = Field(gt=0)
     minimum_accepted_sessions: int = Field(gt=0)
@@ -193,7 +224,7 @@ class CampaignConfig(BaseModel):
     require_quality_acceptance: bool
     require_promotion_dry_run: bool
     preserve_all_attempts: bool
-    slots: tuple[CampaignSlot, ...] = Field(min_length=15, max_length=15)
+    slots: tuple[CampaignSlot, ...] = Field(min_length=1)
 
     @field_validator("timezone")
     @classmethod
@@ -235,11 +266,15 @@ class CampaignConfig(BaseModel):
         if sorted(timestamps) != timestamps:
             raise ValueError("campaign slots must be deterministically sorted")
         primary_count = sum(slot.slot_type == SlotType.PRIMARY for slot in self.slots)
-        reserve_count = sum(slot.slot_type == SlotType.RESERVE for slot in self.slots)
-        if primary_count != 10 or reserve_count != 5:
-            raise ValueError("campaign must contain ten primary and five reserve slots")
+        if primary_count < 1:
+            raise ValueError("campaign must contain at least one primary slot")
+        total_slots = len(self.slots)
+        if self.minimum_accepted_sessions > total_slots:
+            raise ValueError("minimum accepted sessions cannot exceed total planned slots")
         if self.minimum_accepted_sessions > self.maximum_attempts:
             raise ValueError("minimum accepted sessions cannot exceed maximum attempts")
+        if self.maximum_attempts != total_slots:
+            raise ValueError("maximum attempts must equal total planned slots")
         if self.minimum_overlap_seconds_per_accepted_session > self.requested_duration_seconds:
             raise ValueError("minimum overlap cannot exceed requested duration")
         if self.minimum_time_buckets > len(TimeBucket):
@@ -252,7 +287,13 @@ class CampaignConfig(BaseModel):
             and self.require_promotion_dry_run
             and self.preserve_all_attempts
         ):
-            raise ValueError("Phase 3B campaign safety requirements cannot be disabled")
+            raise ValueError("campaign safety requirements cannot be disabled")
+        if self.campaign_role == CampaignRole.DEVELOPMENT_SMOKE and (
+            self.minimum_accepted_sessions > 1
+            or self.minimum_calendar_dates > 1
+            or self.minimum_time_buckets > 1
+        ):
+            raise ValueError("development smoke campaigns cannot satisfy research requirements")
         return self
 
     def slot_by_id(self, slot_id: str) -> CampaignSlot:
@@ -267,7 +308,7 @@ class AttemptSummary(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    campaign_id: str
+    campaign_id: CampaignId
     slot_id: str
     attempt_number: int = Field(gt=0)
     campaign_attempt_id: str = Field(min_length=1)
@@ -367,7 +408,8 @@ class CampaignRegistry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     campaign_schema_version: str
-    campaign_id: str
+    campaign_id: CampaignId
+    campaign_role: CampaignRole = CampaignRole.MULTI_DAY_VALIDATION
     campaign_status: CampaignStatus
     campaign_config_path: str
     campaign_config_sha256: str
@@ -414,7 +456,7 @@ class LedgerEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event_index: int = Field(ge=0)
-    campaign_id: str
+    campaign_id: CampaignId
     event_type: LedgerEventType
     occurred_at: datetime
     slot_id: str | None = None
@@ -436,7 +478,7 @@ class CampaignLockRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    campaign_id: str
+    campaign_id: CampaignId
     slot_id: str
     campaign_attempt_id: str
     process_id: int
@@ -479,7 +521,8 @@ class ValidatedCampaignManifest(BaseModel):
 
     validated_campaign_manifest_version: str
     validated_campaign_manifest_id: str
-    campaign_id: str
+    campaign_id: CampaignId
+    campaign_role: CampaignRole = CampaignRole.MULTI_DAY_VALIDATION
     campaign_schema_version: str
     created_at: datetime
     campaign_runtime_commit: str

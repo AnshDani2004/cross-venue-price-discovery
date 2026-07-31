@@ -23,9 +23,10 @@ def validate_campaign(config: CampaignConfig) -> dict[str, Any]:
     except Exception as exc:
         registry = load_registry(config)
         errors.append(str(exc))
-    if registry.campaign_config_sha256 != sha256_file(
-        Path("configs/campaigns/phase_3b_btc_usd.toml")
-    ):
+    config_path = Path(registry.campaign_config_path)
+    if not config_path.exists():
+        errors.append(f"campaign config path missing: {registry.campaign_config_path}")
+    elif registry.campaign_config_sha256 != sha256_file(config_path):
         errors.append("campaign config hash mismatch")
     if registry.quality_policy_sha256 != sha256_file(Path("configs/data_quality.toml")):
         errors.append("quality policy hash mismatch")
@@ -47,6 +48,7 @@ def validate_campaign(config: CampaignConfig) -> dict[str, Any]:
             errors.append(f"accepted attempt overlap too short: {attempt.campaign_attempt_id}")
     report = {
         "campaign_id": config.campaign_id,
+        "campaign_role": registry.campaign_role.value,
         "validation_status": "VALID" if not errors else "INVALID",
         "errors": errors,
         "attempt_count": len(registry.attempts),

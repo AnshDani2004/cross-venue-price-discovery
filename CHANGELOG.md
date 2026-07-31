@@ -32,3 +32,6 @@
   schedule, hash-chained attempt ledger, derived registry, slot-time enforcement,
   campaign locking, missed-slot recording, validated campaign manifests, multi-session
   normalization lineage, and opt-in smoke markers.
+- Generalize the Phase 3B campaign engine for typed campaign IDs, campaign roles,
+  flexible slot counts, cross-campaign isolation, controlled pre-collection runtime
+  migration, and a separate exploratory intraday campaign path.

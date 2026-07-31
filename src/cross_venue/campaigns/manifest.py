@@ -11,6 +11,7 @@ from cross_venue.campaigns.models import (
     AcceptedPairManifestReference,
     AttemptStatus,
     CampaignConfig,
+    CampaignRole,
     CampaignStatus,
     InclusionStatus,
     ValidatedCampaignManifest,
@@ -25,6 +26,10 @@ def finalize_campaign_manifest(config: CampaignConfig) -> tuple[ValidatedCampaig
     """Create the ignored validated campaign manifest after completion."""
 
     registry = load_registry(config)
+    if registry.campaign_role == CampaignRole.DEVELOPMENT_SMOKE:
+        raise CampaignCompletionError(
+            "development smoke campaigns cannot finalize as research evidence"
+        )
     if registry.campaign_status != CampaignStatus.COMPLETE:
         raise CampaignCompletionError("cannot finalize an incomplete campaign")
     validate_campaign(config)
@@ -60,6 +65,7 @@ def finalize_campaign_manifest(config: CampaignConfig) -> tuple[ValidatedCampaig
         validated_campaign_manifest_version="3b.1",
         validated_campaign_manifest_id=f"validated-campaign-{config.campaign_id}",
         campaign_id=config.campaign_id,
+        campaign_role=registry.campaign_role,
         campaign_schema_version=registry.campaign_schema_version,
         created_at=utc_now(),
         campaign_runtime_commit=registry.runtime_git_commit,

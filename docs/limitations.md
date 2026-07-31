@@ -109,6 +109,16 @@
 - Phase 3B performs no lead-lag analysis, modeling, backtesting, PnL, strategy logic,
   execution simulation, authenticated API use, or trading.
 
+## Phase 3B.1
+
+- The generic campaign engine separates campaign identities but does not itself create
+  research conclusions.
+- Intraday exploratory campaigns are not cross-day validation evidence.
+- Runtime migration is permitted only before the first collection attempt and only with
+  unchanged campaign config and quality policy hashes.
+- Accepted sessions remain governed by quality rules and cannot be manually cherry-picked
+  out of an otherwise accepted campaign.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

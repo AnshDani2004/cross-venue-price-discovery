@@ -17,6 +17,14 @@ inconvenient. Development smoke sessions are engineering evidence only and canno
 used for research conclusions. No price-discovery conclusion may be generated while the
 campaign remains incomplete.
 
+Phase 3B.1 supports more than one campaign role. `MULTI_DAY_VALIDATION` campaigns are
+confirmatory and may support cross-day conclusions only after their explicit date,
+time-bucket, accepted-session, and overlap requirements pass. `EXPLORATORY_INTRADAY`
+campaigns may support Phase 3C-A tooling and hypothesis generation after normalization,
+but they must be labeled exploratory, intraday, hypothesis-generating, and not cross-day
+validated. Completing an intraday campaign does not satisfy the multi-day campaign's
+three-date requirement. Accepted sessions cannot be manually excluded from either role.
+
 Review date: 2026-07-31.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a

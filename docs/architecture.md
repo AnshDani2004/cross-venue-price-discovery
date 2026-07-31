@@ -210,3 +210,18 @@ The ledger is the audit trail; the registry is a derived current-state view. Eve
 accepted, quarantined, rejected, failed, aborted, and missed attempt remains visible.
 Phase 3B does not add research features, lead-lag analysis, backtests, execution
 simulation, PnL, authenticated APIs, or trading.
+
+## Phase 03B.1 Generic Campaign Engine
+
+Phase 3B.1 generalizes the campaign layer without changing the collector or quality
+contracts. Campaign identity is a typed, path-safe string, and each campaign has an
+explicit role such as `MULTI_DAY_VALIDATION` or `EXPLORATORY_INTRADAY`.
+
+Multiple campaigns can coexist under `data/campaigns/` with separate registries,
+ledgers, locks, reports, attempts, and validated campaign manifests. CLI commands select
+the intended campaign by `campaign_id` and resolve that campaign's stored config path
+after initialization.
+
+The multi-day campaign remains the confirmatory cross-day validation dataset. The
+intraday campaign is exploratory and hypothesis-generating; its completion does not
+satisfy the three-date requirement for cross-day conclusions.
