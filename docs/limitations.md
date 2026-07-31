@@ -76,6 +76,17 @@
 - A quarantined live paired run can demonstrate the quality system working without
   proving research readiness.
 
+## Phase 2D.1
+
+- Calibration is based on a small number of short sessions.
+- Sequential pilots do not establish time-of-day or market-regime diversity.
+- No clock synchronization correction is applied.
+- Stable exchange-clock offset is observed, not corrected.
+- Raw duplicate frames are preserved.
+- No normalization or deduplication has been performed.
+- Accepted data does not imply predictive usefulness.
+- No lead-lag conclusion has been tested.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

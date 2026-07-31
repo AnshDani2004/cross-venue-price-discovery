@@ -1,6 +1,6 @@
 # Timestamp Policy
 
-Review date: 2026-07-30.
+Review date: 2026-07-31.
 
 All normalized event timestamps must be timezone-aware UTC. Naive datetimes are rejected
 instead of coerced because silent timezone assumptions can invert lead-lag conclusions.
@@ -50,13 +50,22 @@ The same policy is encoded in `configs/timestamp_policy.toml`.
 - Pass local receipt time into offline parsers explicitly; parsers must not call the
   system clock.
 - Record host clock source and offset checks in collection manifests.
-- Flag negative exchange-to-receipt latency for audit; do not silently repair it.
+- Flag negative observed exchange-receipt deltas for audit; do not silently repair them
+  or label them one-way latency.
 - Flag nonmonotonic receipt timestamps in raw archive record order; do not sort or repair
   the archive.
 - Keep connection epochs and reconnect boundaries as quality metadata rather than
   automatically stitching sequence continuity across reconnects.
 - Report jitter and clock-offset outliers before lead-lag analysis.
 - Preserve exchange timestamps exactly enough to reconstruct venue-specific event order.
+
+## Phase 2D.1 Calibration
+
+Policy 2d.2 treats stable or low-variance negative
+`observed_exchange_receipt_delta` patterns as clock/feed diagnostics rather than
+automatic quarantine. This does not correct exchange timestamps, estimate true network
+latency, or prove clock synchronization. Host-clock observations are read-only and may
+be unavailable when the platform requires administrator access.
 
 ## Precision
 

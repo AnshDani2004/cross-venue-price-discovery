@@ -1,6 +1,6 @@
 # Data Sources
 
-Documentation review date: 2026-07-30.
+Documentation review date: 2026-07-31.
 
 Only official Coinbase and Kraken documentation or exchange-published endpoints are used
 for Phase 01 source planning. No authenticated data source, private endpoint, or trading
@@ -29,7 +29,7 @@ are not parsed or subscribed.
 | Trade channel | Use `matches`; record initial `last_match` behavior and later `match` updates. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Top-of-book channel | Use `ticker`; preserve `best_bid`, `best_bid_size`, `best_ask`, and `best_ask_size`. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Heartbeat | Subscribe to `heartbeat` so gaps can be detected with sequence and last trade identifiers. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
-| Sequence handling | Preserve Coinbase per-product `sequence` values on configured channels; gaps or out-of-order messages must flag intervals as unusable until repaired. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
+| Sequence handling | Preserve Coinbase per-product `sequence` values on configured channels. Under the current partial subscription, product-level numeric jumps are diagnostic unless heartbeat or trade-correspondence evidence indicates missing subscribed messages. | https://docs.cdp.coinbase.com/exchange/websocket-feed/channels |
 | Rate limits | Respect documented request, burst, inbound message, and subscription limits; collector settings must remain below them. | https://docs.cdp.coinbase.com/exchange/websocket-feed/rate-limits |
 | Subscription acknowledgement | A `subscriptions` message is the acknowledgement for subscribe/unsubscribe requests. | https://docs.cdp.coinbase.com/exchange/websocket-feed/overview |
 | Error behavior | Coinbase sends `type="error"` messages for many active disconnect/failure cases. Invalid subscription-style errors are terminal in Phase 2B. | https://docs.cdp.coinbase.com/exchange/websocket-feed/errors |
@@ -50,6 +50,10 @@ Minimal Phase 2 subscription example:
 Coinbase ambiguity to preserve in later code reviews: `ticker` is easier for top of
 book, while `level2` is better for reconstructed depth. Phase 2 chooses `ticker` to
 avoid pretending a full order book exists before sequence-gap handling is implemented.
+Coinbase documents that `matches` messages can be dropped and that `ticker` batches
+cascading matches. Policy 2d.2 therefore uses heartbeat `last_trade_id` and
+match/ticker trade correspondence as stronger missing-message evidence than a bare
+product sequence jump.
 
 ### Coinbase Phase 2A Parser Coverage
 
@@ -79,7 +83,7 @@ avoid pretending a full order book exists before sequence-gap handling is implem
 | Public WebSocket endpoint | Use `wss://ws.kraken.com/v2`. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Symbol | Use `BTC/USD` for WebSocket v2. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Trade channel | Use `trade`; preserve side, quantity, price, `trade_id`, and timestamp fields. `trade_id` is trade-message metadata, not a venue-wide sequence guarantee. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/trade |
-| Top-of-book channel | Use `ticker` with `event_trigger=bbo`; preserve bid, bid quantity, ask, ask quantity, symbol, and timestamp fields. Do not assign a sequence field or checksum field to Kraken ticker messages. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker |
+| Top-of-book channel | Use `ticker` with `event_trigger=bbo`; preserve bid, bid quantity, ask, ask quantity, symbol, and timestamp fields. Do not assign a sequence field or checksum field to Kraken ticker messages. A trade without BBO change is not proof of ticker failure under this subscription. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/ticker |
 | Book channel | Defer `book` until checksum validation and full-depth reconstruction are implemented. | https://docs.kraken.com/exchange/api-reference/spot-websocket-v2/book |
 | Timestamp semantics | Treat RFC3339 timestamps as exchange timestamps, not unique identifiers. | https://docs.kraken.com/exchange/guides/websockets/introduction |
 | Connection policy | Avoid rapid reconnect loops; maintain heartbeat/ping behavior for idle connections and observe documented reconnection guidance. | https://docs.kraken.com/exchange/guides/websockets/introduction |
@@ -115,7 +119,9 @@ Minimal Phase 2 subscription examples:
 Kraken ambiguity to preserve in later code reviews: the `ticker` channel is appropriate
 for top-of-book research, while the future `book` channel would have separate checksum
 semantics. Do not compute depth features from ticker-only data, and do not treat
-`trade_id` as ticker sequencing.
+`trade_id` as ticker sequencing. Kraken heartbeats are automatic liveness messages with
+no other payload, so identical heartbeat frames are expected to recur and are typed
+separately from trade duplication.
 
 ### Kraken Phase 2A Parser Coverage
 

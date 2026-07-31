@@ -19,6 +19,8 @@ without skipping data integrity, timestamp discipline, or risk controls.
 - Phase 2D: Data-quality validation implemented with session quality reports,
   duplicate/continuity/timestamp/quote diagnostics, paired overlap reports,
   explicit dispositions, aggregation, dry-run promotion, and opt-in live quality tests.
+- Phase 2D.1: Quality calibration implemented with policy 2d.2; dataset approval for
+  Phase 3 depends on newly accepted paired pilots and a validated manifest.
 
 No normalized datasets, predictive models, fair-value models, backtests, trading
 policies, or execution simulators have been implemented.
@@ -81,6 +83,7 @@ python -m cross_venue validate-archive --session-path data/raw/venue=coinbase/in
 python -m cross_venue recover-session --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
 python -m cross_venue analyze-session-quality --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
 python -m cross_venue collect-paired-quality --duration-seconds 120 --max-messages-per-venue 20000
+python -m cross_venue reanalyze-calibrated-pair --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
 python -m cross_venue promote-dataset --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
 ```
 

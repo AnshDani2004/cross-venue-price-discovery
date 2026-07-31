@@ -16,6 +16,7 @@ from cross_venue.schemas import Exchange, InstrumentId
 
 Environment = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+QualitySeverityName = Literal["info", "warning", "error", "critical"]
 MarketType = Literal["spot"]
 TopOfBookEventTrigger = Literal["bbo", "trades"]
 TargetType = Literal["direction"]
@@ -555,6 +556,72 @@ class QualityDuplicateConfig(BaseModel):
     max_duplicate_trade_id_rate: float = Field(ge=0, le=1)
 
 
+class QualityExchangeReceiptDeltaConfig(BaseModel):
+    """Pattern-aware observed exchange-receipt delta semantics."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stable_offset_severity: QualitySeverityName = "info"
+    low_variance_offset_severity: QualitySeverityName = "info"
+    mixed_distribution_severity: QualitySeverityName = "warning"
+    sporadic_outlier_severity: QualitySeverityName = "warning"
+    unstable_offset_severity: QualitySeverityName = "warning"
+    insufficient_evidence_severity: QualitySeverityName = "info"
+    minimum_events_for_classification: int = Field(default=30, ge=1)
+    stable_negative_rate: float = Field(default=0.8, ge=0, le=1)
+    stable_max_iqr_ms: float = Field(default=1000.0, ge=0)
+    low_variance_max_iqr_ms: float = Field(default=250.0, ge=0)
+    sporadic_negative_rate: float = Field(default=0.05, ge=0, le=1)
+    unstable_min_iqr_ms: float = Field(default=3000.0, ge=0)
+
+
+class QualityCoinbaseContinuityConfig(BaseModel):
+    """Coinbase partial-subscription continuity policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    product_sequence_jump_severity: QualitySeverityName = "info"
+    duplicate_related_sequence_severity: QualitySeverityName = "info"
+    nonmonotonic_sequence_severity: QualitySeverityName = "warning"
+    heartbeat_missing_match_severity: QualitySeverityName = "warning"
+    conflicting_trade_id_severity: QualitySeverityName = "error"
+    match_ticker_correspondence_minimum: float = Field(default=0.95, ge=0, le=1)
+    match_ticker_grace_ms: int = Field(default=5000, ge=0)
+
+
+class QualityKrakenDuplicateSemanticsConfig(BaseModel):
+    """Typed Kraken duplicate severity policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    heartbeat_duplicate_severity: QualitySeverityName = "info"
+    status_duplicate_severity: QualitySeverityName = "info"
+    subscription_ack_duplicate_severity: QualitySeverityName = "info"
+    ticker_duplicate_severity: QualitySeverityName = "info"
+    ticker_semantic_duplicate_severity: QualitySeverityName = "info"
+    trade_raw_duplicate_severity: QualitySeverityName = "warning"
+    identical_trade_duplicate_severity: QualitySeverityName = "warning"
+    conflicting_trade_duplicate_severity: QualitySeverityName = "error"
+    unsupported_duplicate_severity: QualitySeverityName = "info"
+    other_duplicate_severity: QualitySeverityName = "warning"
+
+
+class QualityQuoteFreshnessConfig(BaseModel):
+    """Quote freshness semantics separated from feed liveness."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    quote_age_severity: QualitySeverityName = "info"
+    heartbeat_healthy_quiet_severity: QualitySeverityName = "info"
+    market_activity_without_bbo_change_severity: QualitySeverityName = "info"
+    probable_feed_inactivity_severity: QualitySeverityName = "warning"
+    connection_inactivity_severity: QualitySeverityName = "warning"
+    coinbase_unmatched_trade_severity: QualitySeverityName = "warning"
+    coinbase_conflicting_trade_severity: QualitySeverityName = "error"
+    connection_inactivity_threshold_ms: int = Field(default=10_000, gt=0)
+    coinbase_match_ticker_grace_ms: int = Field(default=5000, ge=0)
+
+
 class QualityDecisionConfig(BaseModel):
     """Quarantine policy switches for noncritical findings."""
 
@@ -577,6 +644,18 @@ class QualityConfigSections(BaseModel):
     coverage: QualityCoverageConfig
     duplicates: QualityDuplicateConfig
     decisions: QualityDecisionConfig
+    exchange_receipt_delta: QualityExchangeReceiptDeltaConfig = Field(
+        default_factory=QualityExchangeReceiptDeltaConfig
+    )
+    coinbase_continuity: QualityCoinbaseContinuityConfig = Field(
+        default_factory=QualityCoinbaseContinuityConfig
+    )
+    kraken_duplicates: QualityKrakenDuplicateSemanticsConfig = Field(
+        default_factory=QualityKrakenDuplicateSemanticsConfig
+    )
+    quote_freshness: QualityQuoteFreshnessConfig = Field(
+        default_factory=QualityQuoteFreshnessConfig
+    )
 
 
 class DataQualityConfig(BaseModel):

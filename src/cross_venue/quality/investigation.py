@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import statistics
-import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -15,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from cross_venue.config import DataQualityConfig, StorageConfig
+from cross_venue.quality.clock import observe_host_clock
 from cross_venue.quality.io import current_git_commit, sha256_text, utc_now
 from cross_venue.quality.models import PairedQualityReport, SessionQualityReport
 from cross_venue.schemas import Exchange
@@ -602,31 +602,7 @@ def _delta_classification(values: list[float]) -> str:
 
 
 def _host_clock_info() -> dict[str, Any]:
-    commands = [
-        ["systemsetup", "-getusingnetworktime"],
-        ["systemsetup", "-getnetworktimeserver"],
-        ["sntp", "-sS", "time.apple.com"],
-    ]
-    observations = []
-    for command in commands:
-        try:
-            result = subprocess.run(command, text=True, capture_output=True, timeout=5, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            observations.append(
-                {"command": " ".join(command), "available": False, "error": str(exc)}
-            )
-            continue
-        observations.append(
-            {
-                "command": " ".join(command),
-                "available": result.returncode == 0,
-                "stdout": result.stdout.strip()[:500],
-                "stderr": result.stderr.strip()[:500],
-                "returncode": result.returncode,
-                "observed_at": utc_now().isoformat(),
-            }
-        )
-    return {"observations": observations}
+    return observe_host_clock()
 
 
 def _policy_recommendations(
