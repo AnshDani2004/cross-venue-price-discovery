@@ -492,3 +492,123 @@ def load_storage_config(path: Path) -> StorageConfig:
     """Load and validate Phase 2C storage configuration."""
 
     return StorageConfig.model_validate(_load_toml(path))
+
+
+class QualityIntegrityConfig(BaseModel):
+    """Archive-integrity gates for Phase 2D quality analysis."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    require_archive_validation: bool
+    require_all_checksums: bool
+    allow_partial_shards: bool
+    allow_writer_errors: bool
+    allow_missing_manifest: bool
+    allow_missing_quality_summary: bool
+
+
+class QualityParsingConfig(BaseModel):
+    """Parser and unsupported-message quality thresholds."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_parse_error_rate: float = Field(ge=0, le=1)
+    max_unsupported_message_rate: float = Field(ge=0, le=1)
+    max_wrong_symbol_messages: int = Field(ge=0)
+
+
+class QualityTimestampConfig(BaseModel):
+    """Receipt/exchange timestamp quality thresholds."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_nonmonotonic_receipt_events: int = Field(ge=0)
+    max_missing_exchange_timestamp_rate: float = Field(ge=0, le=1)
+    stale_quote_threshold_ms: int = Field(gt=0)
+
+
+class QualityCoverageConfig(BaseModel):
+    """Minimum coverage required before research promotion."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    minimum_session_duration_seconds: float = Field(gt=0)
+    minimum_frames_per_venue: int = Field(ge=0)
+    minimum_trades_per_venue: int = Field(ge=0)
+    minimum_top_of_book_events_per_venue: int = Field(ge=0)
+    minimum_cross_venue_overlap_seconds: float = Field(gt=0)
+    maximum_start_skew_seconds: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def overlap_must_not_exceed_session_minimum(self) -> QualityCoverageConfig:
+        if self.minimum_cross_venue_overlap_seconds > self.minimum_session_duration_seconds:
+            raise ValueError("minimum overlap cannot exceed minimum session duration")
+        return self
+
+
+class QualityDuplicateConfig(BaseModel):
+    """Duplicate diagnostic thresholds."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_exact_raw_duplicate_rate: float = Field(ge=0, le=1)
+    max_duplicate_trade_id_rate: float = Field(ge=0, le=1)
+
+
+class QualityDecisionConfig(BaseModel):
+    """Quarantine policy switches for noncritical findings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    quarantine_on_sequence_anomaly: bool
+    quarantine_on_timestamp_outlier: bool
+    quarantine_on_duplicate_warning: bool
+    quarantine_on_stale_quote_warning: bool
+
+
+class QualityConfigSections(BaseModel):
+    """Nested Phase 2D quality-policy sections."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    integrity: QualityIntegrityConfig
+    parsing: QualityParsingConfig
+    timestamps: QualityTimestampConfig
+    coverage: QualityCoverageConfig
+    duplicates: QualityDuplicateConfig
+    decisions: QualityDecisionConfig
+
+
+class DataQualityConfig(BaseModel):
+    """Validated Phase 2D quality policy."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy_version: str = Field(min_length=1)
+    effective_date: date
+    report_root: Path = Path("data/quality")
+    validated_manifest_root: Path = Path("data/validated/manifests")
+    default_controlled_duration_seconds: float = Field(gt=0)
+    max_controlled_duration_seconds: float = Field(gt=0)
+    max_messages_per_venue: int = Field(gt=0)
+    quality: QualityConfigSections
+
+    @field_validator("report_root", "validated_manifest_root")
+    @classmethod
+    def output_roots_must_be_local(cls, value: Path) -> Path:
+        text = str(value)
+        if "://" in text:
+            raise ValueError("quality output roots must be local filesystem paths")
+        return value.expanduser()
+
+    @model_validator(mode="after")
+    def defaults_must_fit_hard_limits(self) -> DataQualityConfig:
+        if self.default_controlled_duration_seconds > self.max_controlled_duration_seconds:
+            raise ValueError("default controlled duration cannot exceed hard maximum")
+        return self
+
+
+def load_data_quality_config(path: Path) -> DataQualityConfig:
+    """Load and validate Phase 2D data-quality policy."""
+
+    return DataQualityConfig.model_validate(_load_toml(path))

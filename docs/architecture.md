@@ -95,6 +95,22 @@ Public WebSocket
   -> existing JSON decode and parser path
 ```
 
+## Phase 2D Quality Flow
+
+Phase 2D treats Phase 2C raw archives as immutable evidence and writes separate quality
+artifacts.
+
+```text
+Immutable raw archive
+  -> archive integrity validation
+  -> session quality analysis
+  -> duplicate, continuity, timestamp, quote, and coverage diagnostics
+  -> cross-venue overlap analysis
+  -> ACCEPTED / QUARANTINED / REJECTED disposition
+  -> dry-run promotion
+  -> validated dataset manifest only when all sessions and the pair are accepted
+```
+
 ## Timestamp Contract
 
 Every event must preserve:
@@ -138,8 +154,8 @@ produce market results.
 
 ## Phase 02 Boundary
 
-Phase 2C implements bounded raw archival for the documented public trade and top-of-book
-channels only. Long-duration stability evidence, normalized dataset promotion, feature
-engineering, labels, models, and trading simulation remain future work. Phase 2 must not
-add authenticated exchange clients, order submission, backtests, model training,
-fair-value estimation, or trading strategy logic.
+Phase 2D implements data-quality validation and controlled paired collection for the
+documented public trade and top-of-book channels only. Feature engineering, labels,
+models, backtests, fair-value estimation, and trading simulation remain future work.
+Phase 2 must not add authenticated exchange clients, order submission, or trading
+strategy logic.

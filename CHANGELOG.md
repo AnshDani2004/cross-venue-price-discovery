@@ -18,3 +18,6 @@
 - Add Phase 2C exact raw archival with bounded writer queues, rotating JSONL shards,
   SHA-256 sidecars, persistent manifests, quality summaries, validation/recovery CLI
   commands, offline tests, and opt-in live persistence smokes.
+- Add Phase 2D data-quality validation with policy-driven session diagnostics, paired
+  overlap analysis, explicit dispositions, dry-run validated manifest promotion,
+  aggregation, controlled paired collection, and opt-in live quality tests.

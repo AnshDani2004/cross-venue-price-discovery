@@ -1,5 +1,10 @@
 # Research Protocol
 
+Research may use only sessions with `ACCEPTED` Phase 2D quality reports that are
+referenced by a validated dataset manifest. Quarantined and rejected sessions require
+resolution before research use and must not be silently cleaned into exploratory
+datasets.
+
 Review date: 2026-07-30.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a

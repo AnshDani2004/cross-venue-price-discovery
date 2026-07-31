@@ -1,0 +1,43 @@
+policy_version = "2d.1"
+effective_date = 2026-07-30
+report_root = "data/quality"
+validated_manifest_root = "data/validated/manifests"
+default_controlled_duration_seconds = 120
+max_controlled_duration_seconds = 300
+max_messages_per_venue = 20000
+
+[quality.integrity]
+require_archive_validation = true
+require_all_checksums = true
+allow_partial_shards = false
+allow_writer_errors = false
+allow_missing_manifest = false
+allow_missing_quality_summary = false
+
+[quality.parsing]
+max_parse_error_rate = 0.001
+max_unsupported_message_rate = 0.01
+max_wrong_symbol_messages = 0
+
+[quality.timestamps]
+max_nonmonotonic_receipt_events = 0
+max_missing_exchange_timestamp_rate = 0.05
+stale_quote_threshold_ms = 2000
+
+[quality.coverage]
+minimum_session_duration_seconds = 120
+minimum_frames_per_venue = 100
+minimum_trades_per_venue = 1
+minimum_top_of_book_events_per_venue = 10
+minimum_cross_venue_overlap_seconds = 90
+maximum_start_skew_seconds = 15
+
+[quality.duplicates]
+max_exact_raw_duplicate_rate = 0.01
+max_duplicate_trade_id_rate = 0.001
+
+[quality.decisions]
+quarantine_on_sequence_anomaly = true
+quarantine_on_timestamp_outlier = true
+quarantine_on_duplicate_warning = true
+quarantine_on_stale_quote_warning = true
