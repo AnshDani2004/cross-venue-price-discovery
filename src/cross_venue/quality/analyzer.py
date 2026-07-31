@@ -939,10 +939,7 @@ def _delta_pattern_classification(
     upper_spread = abs(p95 - median_value)
     if negative_rate >= policy.stable_negative_rate and spread <= policy.stable_max_iqr_ms:
         return "STABLE_OFFSET"
-    if (
-        negative_rate >= policy.stable_negative_rate
-        and upper_spread <= policy.low_variance_max_iqr_ms
-    ):
+    if upper_spread <= policy.low_variance_max_iqr_ms:
         return "LOW_VARIANCE_OFFSET"
     if negative_rate <= policy.sporadic_negative_rate:
         return "SPORADIC_OUTLIERS"
