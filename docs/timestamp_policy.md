@@ -26,6 +26,12 @@ Primary research ordering uses `local_receipt_ts` because a model cannot act on 
 before it reaches the process. Exchange timestamps are preserved for diagnostics and
 venue reconstruction, but they are not the primary tradability clock.
 
+Phase 2D cross-venue overlap is measured with `local_receipt_ts`, not exchange time.
+`local_receipt_ts - exchange_ts` is named `observed_exchange_receipt_delta`; it is not
+true network latency because it includes exchange clock offset, network delay, operating
+system scheduling, event-loop scheduling, runtime boundaries, and timestamp precision
+differences.
+
 When timestamps are equal, order deterministically by:
 
 1. `local_receipt_ts`
@@ -45,6 +51,10 @@ The same policy is encoded in `configs/timestamp_policy.toml`.
   system clock.
 - Record host clock source and offset checks in collection manifests.
 - Flag negative exchange-to-receipt latency for audit; do not silently repair it.
+- Flag nonmonotonic receipt timestamps in raw archive record order; do not sort or repair
+  the archive.
+- Keep connection epochs and reconnect boundaries as quality metadata rather than
+  automatically stitching sequence continuity across reconnects.
 - Report jitter and clock-offset outliers before lead-lag analysis.
 - Preserve exchange timestamps exactly enough to reconstruct venue-specific event order.
 

@@ -39,6 +39,8 @@ data/raw/*
 data/normalized/*
 data/features/*
 data/manifests/*
+data/quality/*
+data/validated/*
 reports/figures/*
 reports/tables/*
 reports/research_report/*
@@ -50,6 +52,8 @@ reports/generated/
 !data/normalized/.gitkeep
 !data/features/.gitkeep
 !data/manifests/.gitkeep
+!data/quality/.gitkeep
+!data/validated/.gitkeep
 !data/samples/
 !data/samples/.gitkeep
 !reports/figures/.gitkeep

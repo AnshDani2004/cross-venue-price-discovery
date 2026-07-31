@@ -64,6 +64,26 @@ Record for each archival run: session path, frame count, normalized event counts
 errors, reconnect attempts, shard count, archive bytes, checksum status, partial count,
 manifest path, quality summary path, and validation status.
 
+## Phase 2D Controlled Paired Quality Procedure
+
+Run Coinbase and Kraken together on the same host:
+
+```bash
+python -m cross_venue collect-paired-quality --duration-seconds 120 --max-messages-per-venue 20000
+python -m cross_venue promote-dataset --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
+```
+
+The paired command creates one paired collection ID, starts both public collectors
+concurrently, archives each venue independently, validates both archives, analyzes both
+sessions, measures local-receipt-time overlap, and writes a paired quality report under
+ignored `data/quality`. Promotion is dry-run by default and writes no transformed market
+data.
+
+Acceptance requires archive validation, reconciled counters, sufficient duration,
+sufficient frames and top-of-book events, acceptable parse-error rate, receipt-time
+integrity, acceptable duplicate and continuity diagnostics, no critical quote failures,
+and configured cross-venue overlap. Quarantined and rejected sessions are not promoted.
+
 ## Pilot Sessions
 
 | Session | Duration | Venues | Channels | Purpose |

@@ -16,6 +16,9 @@ without skipping data integrity, timestamp discipline, or risk controls.
 - Phase 2C: Exact raw WebSocket archival, rotating JSONL shards, SHA-256 sidecars,
   persistent manifests, quality summaries, validation, recovery, and opt-in persistence
   smoke tests implemented.
+- Phase 2D: Data-quality validation implemented with session quality reports,
+  duplicate/continuity/timestamp/quote diagnostics, paired overlap reports,
+  explicit dispositions, aggregation, dry-run promotion, and opt-in live quality tests.
 
 No normalized datasets, predictive models, fair-value models, backtests, trading
 policies, or execution simulators have been implemented.
@@ -76,6 +79,9 @@ python -m cross_venue smoke-collect --venue kraken --duration-seconds 30 --max-m
 python -m cross_venue smoke-archive --venue coinbase --duration-seconds 20 --max-messages 2000
 python -m cross_venue validate-archive --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
 python -m cross_venue recover-session --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
+python -m cross_venue analyze-session-quality --session-path data/raw/venue=coinbase/instrument=BTC-USD/date=<YYYY-MM-DD>/session=<session_id>
+python -m cross_venue collect-paired-quality --duration-seconds 120 --max-messages-per-venue 20000
+python -m cross_venue promote-dataset --paired-report data/quality/paired/<paired_collection_id>/paired_quality_report.json
 ```
 
 The smoke collector is bounded, public-only, and no-write. It prints an in-memory
@@ -141,9 +147,8 @@ python -m pip check
 
 ## Next Phase
 
-Phase 2D should validate data quality over controlled collection windows before any
-feature engineering or research modeling begins. It should not introduce model training,
-backtesting, fair-value estimation, or live trading.
+Phase 3 may begin only from accepted sessions referenced by a validated dataset manifest.
+Research modeling, backtesting, fair-value estimation, and live trading have not started.
 
 Local learning notes may exist at `docs/learning_log.md` and
 `docs/interview_guide.md`; they are intentionally ignored and not pushed to GitHub.

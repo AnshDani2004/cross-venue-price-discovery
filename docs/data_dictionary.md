@@ -136,3 +136,33 @@ Equal timestamps are ordered by `local_receipt_ts`, then `venue`, then
 | `collection_started_at` | timestamp | UTC | Yes | Generated | Timezone-aware | Reject manifest |
 | `collection_ended_at` | timestamp | UTC | Yes | Generated | `>= collection_started_at` | Reject manifest |
 | `collector_version` | string | none | Yes | Generated | Git commit or package version | Reject manifest |
+
+## Quality Dispositions
+
+| Value | Meaning |
+| --- | --- |
+| `ACCEPTED` | Session or pair satisfies mandatory quality policy checks. |
+| `QUARANTINED` | Data is readable and preserved but requires review before research use. |
+| `REJECTED` | Critical integrity or policy failure blocks research use. |
+
+## Quality Finding
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `finding_id` | string | Yes | Stable finding code. |
+| `category` | string | Yes | Integrity, duplicates, continuity, timestamps, quotes, coverage, or overlap. |
+| `severity` | enum | Yes | `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
+| `metric` | string | Yes | Metric being evaluated. |
+| `observed_value` | scalar/null | Yes | Observed value without repair or deletion. |
+| `threshold` | scalar/null | No | Policy threshold when applicable. |
+| `message` | string | Yes | Human-readable explanation. |
+| `evidence` | object | Yes | Portable evidence values; raw payloads are not printed by default. |
+| `affected_channel` | string/null | No | Channel scope when applicable. |
+| `affected_record_range` | tuple/null | No | Raw archive record range when applicable. |
+
+Session quality reports include lineage hashes, input shard checksums, archive validation
+result, all diagnostic metrics, findings, policy version, Git commit, and disposition.
+Paired reports include the two session reports, local-receipt-time overlap, start skew,
+paired findings, and paired disposition. Aggregate reports summarize counts and metric
+distributions across session reports. Validated dataset manifests reference accepted raw
+sessions and quality reports without copying or transforming raw data.

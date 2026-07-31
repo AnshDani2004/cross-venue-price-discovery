@@ -62,6 +62,20 @@
 - Recovery handles valid JSONL prefixes in partial shards, but has not been exercised
   against process-kill crash drills.
 
+## Phase 2D
+
+- The live paired pilot is a short quality validation run, not long-term stability
+  evidence or regime-diversity evidence.
+- Quality thresholds are policy choices and can affect ACCEPTED, QUARANTINED, or
+  REJECTED outcomes.
+- No exchange-clock synchronization correction is applied.
+- Phase 2D does not repair gaps, deduplicate records, interpolate quotes, or clean raw
+  archives.
+- No normalized feature dataset, predictive analysis, lead-lag research, backtest,
+  strategy, execution simulation, PnL, or trading functionality exists.
+- A quarantined live paired run can demonstrate the quality system working without
+  proving research readiness.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

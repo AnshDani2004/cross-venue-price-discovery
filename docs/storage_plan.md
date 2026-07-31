@@ -56,3 +56,8 @@ Raw data can be promoted to normalized data only when:
 - Venue-specific sequence/checksum checks pass or the interval is explicitly flagged.
 - Crossed or empty top-of-book events are rejected or quarantined.
 - Manifest checksums are available.
+
+Phase 2D quality reports are separate artifacts under ignored `data/quality`. Validated
+dataset manifests live under ignored `data/validated/manifests`, reference accepted raw
+sessions and quality report hashes, and do not move, rewrite, deduplicate, interpolate,
+or transform raw frames.
