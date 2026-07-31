@@ -11,5 +11,9 @@ class QualityAnalysisError(QualityError):
     """Raised when a session cannot be analyzed safely."""
 
 
+class CollectionPreflightError(QualityError):
+    """Raised before network access when controlled collection settings are invalid."""
+
+
 class PromotionError(QualityError):
     """Raised when validated dataset promotion is not allowed."""

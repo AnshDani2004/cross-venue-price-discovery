@@ -119,6 +119,15 @@
 - Accepted sessions remain governed by quality rules and cannot be manually cherry-picked
   out of an otherwise accepted campaign.
 
+## Phase 3B.2
+
+- Long-duration campaign support raises the finite paired-collection safety bound to
+  3,600 seconds, but it does not guarantee that a long public collection will be accepted.
+- I01 remains a failed zero-data preflight attempt and must be replaced by a later
+  intraday slot or reserve slot.
+- Runtime migration after zero-data failure is limited to attempts with no collected
+  market-data evidence.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

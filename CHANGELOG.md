@@ -35,3 +35,7 @@
 - Generalize the Phase 3B campaign engine for typed campaign IDs, campaign roles,
   flexible slot counts, cross-campaign isolation, controlled pre-collection runtime
   migration, and a separate exploratory intraday campaign path.
+- Support bounded long-duration campaign collection by aligning Phase 2D runtime
+  preflight with 31-minute campaign sessions, classifying preflight failures explicitly,
+  preserving failed zero-data attempts, and allowing controlled corrective runtime
+  migration.

@@ -25,6 +25,10 @@ but they must be labeled exploratory, intraday, hypothesis-generating, and not c
 validated. Completing an intraday campaign does not satisfy the multi-day campaign's
 three-date requirement. Accepted sessions cannot be manually excluded from either role.
 
+Campaign collection-duration validation must be tested through the complete runtime path
+from campaign slot execution into Phase 2D paired collection. Mocked campaign runners are
+not sufficient evidence that production-duration slots can reach public collectors.
+
 Review date: 2026-07-31.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a
