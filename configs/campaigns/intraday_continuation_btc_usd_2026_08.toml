@@ -1,0 +1,67 @@
+campaign_schema_version = "3b.2"
+campaign_id = "btc-usd-coinbase-kraken-2026-08-intraday-continuation-v1"
+campaign_role = "EXPLORATORY_INTRADAY"
+instrument = "BTC-USD"
+venues = ["coinbase", "kraken"]
+timezone = "America/New_York"
+
+quality_policy_version = "2d.2"
+normalization_schema_version = "3a.1"
+
+requested_duration_seconds = 1860
+minimum_overlap_seconds_per_accepted_session = 1800
+minimum_accepted_sessions = 2
+minimum_total_accepted_overlap_seconds = 3600
+minimum_calendar_dates = 2
+minimum_time_buckets = 2
+maximum_attempts = 5
+
+early_start_tolerance_seconds = 300
+late_start_tolerance_seconds = 900
+maximum_messages_per_venue = 100000
+
+registry_root = "data/campaigns"
+validated_manifest_root = "data/validated/manifests"
+normalized_output_root = "data/normalized"
+
+require_clean_working_tree = true
+require_frozen_runtime_commit = true
+require_archive_validation = true
+require_quality_acceptance = true
+require_promotion_dry_run = true
+preserve_all_attempts = true
+
+[[slots]]
+slot_id = "S01"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-05T14:00:00Z"
+planned_start_local = "2026-08-05 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "S02"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-07T02:00:00Z"
+planned_start_local = "2026-08-06 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "S03"
+slot_type = "PRIMARY"
+planned_start_utc = "2026-08-07T14:00:00Z"
+planned_start_local = "2026-08-07 10:00 America/New_York"
+time_bucket = "MORNING"
+
+[[slots]]
+slot_id = "R01"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-08T02:00:00Z"
+planned_start_local = "2026-08-07 22:00 America/New_York"
+time_bucket = "EVENING"
+
+[[slots]]
+slot_id = "R02"
+slot_type = "RESERVE"
+planned_start_utc = "2026-08-08T14:00:00Z"
+planned_start_local = "2026-08-08 10:00 America/New_York"
+time_bucket = "MORNING"

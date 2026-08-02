@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -12,9 +13,11 @@ from cross_venue.storage.validation import ArchiveValidationResult
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, "PYTHONPATH": "src"}
     return subprocess.run(
         [sys.executable, "-m", "cross_venue", *args],
         check=False,
+        env=env,
         text=True,
         capture_output=True,
     )
@@ -66,6 +69,11 @@ def test_campaign_cli_help_is_generic() -> None:
     assert result.returncode == 0
     assert "--to-current-commit" in result.stdout
     assert "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION" in result.stdout
+
+    result = run_cli("build-composite-exploratory-dataset", "--help")
+    assert result.returncode == 0
+    assert "--campaign-id" in result.stdout
+    assert "--output-path" in result.stdout
 
 
 async def _successful_smoke_runner(_venue: str, _limits: RunLimits) -> CollectorRunSummary:

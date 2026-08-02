@@ -281,14 +281,7 @@ def campaign_status_payload(config: CampaignConfig, registry: CampaignRegistry) 
             SlotStatus.NOT_NEEDED,
         }
     }
-    next_slot = next(
-        (
-            state.slot
-            for slot_id, state in registry.planned_slots.items()
-            if slot_id not in completed
-        ),
-        None,
-    )
+    next_slot = next((slot for slot in config.slots if slot.slot_id not in completed), None)
     next_command = None
     if next_slot is not None:
         next_command = (

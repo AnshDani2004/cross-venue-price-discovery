@@ -45,3 +45,6 @@
 - Remove the remaining collector-internal archival sink cap, add typed collector stop
   reasons and effective per-venue run-limit diagnostics, and cover campaign limits
   through real collector stop predicates.
+- Add a separate supplemental exploratory intraday campaign plan plus a lineage-only
+  composite manifest handoff for combining accepted exploratory sessions without
+  rewriting source campaign ledgers.
