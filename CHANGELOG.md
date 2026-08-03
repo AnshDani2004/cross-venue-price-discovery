@@ -45,3 +45,6 @@
 - Remove the remaining collector-internal archival sink cap, add typed collector stop
   reasons and effective per-venue run-limit diagnostics, and cover campaign limits
   through real collector stop predicates.
+- Add a separate multi-day supplemental validation campaign and composite validation
+  manifest command for filling the original campaign's accepted-session and overlap
+  shortfall without rewriting source ledgers.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,10 @@ import pytest
 from pydantic import ValidationError
 from quality_helpers import make_session
 
+from cross_venue.campaigns.composite_validation import (
+    COMPOSITE_VALIDATION_LABEL,
+    build_composite_validation_manifest,
+)
 from cross_venue.campaigns.config import load_campaign_config
 from cross_venue.campaigns.exceptions import CampaignLockError, CampaignValidationError
 from cross_venue.campaigns.ledger import read_ledger
@@ -34,6 +39,7 @@ from cross_venue.campaigns.models import (
 )
 from cross_venue.campaigns.paths import ledger_path, lock_path, registry_path
 from cross_venue.campaigns.registry import (
+    campaign_status_payload,
     initialize_campaign,
     mark_slot_missed,
     record_attempt_event,
@@ -62,6 +68,65 @@ def test_campaign_config_loads_fixed_schedule() -> None:
     assert config.slots[0].slot_id == "P01"
     assert config.slots[-1].slot_id == "R05"
     assert config.minimum_accepted_sessions == 10
+
+
+def test_multiday_supplement_config_matches_original_campaign_shortfall() -> None:
+    config = load_campaign_config(
+        Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml")
+    )
+    accepted_sessions = 4
+    accepted_overlap_seconds = 7430.1424609999995
+    sessions_needed = max(0, 10 - accepted_sessions)
+    overlap_needed = max(0, 18_000 - accepted_overlap_seconds)
+    minimum_supplemental_sessions = max(sessions_needed, math.ceil(overlap_needed / 1800))
+
+    assert config.campaign_id == "btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1"
+    assert config.campaign_role == CampaignRole.MULTI_DAY_VALIDATION
+    assert config.requested_duration_seconds == 1860
+    assert config.maximum_messages_per_venue == 100_000
+    assert config.minimum_overlap_seconds_per_accepted_session == 1800
+    assert config.minimum_accepted_sessions == minimum_supplemental_sessions == 6
+    assert config.minimum_total_accepted_overlap_seconds == math.ceil(overlap_needed) == 10570
+    assert config.minimum_calendar_dates == 3
+    assert config.minimum_time_buckets == 3
+    assert sum(slot.slot_type == SlotType.PRIMARY for slot in config.slots) == 6
+    assert sum(slot.slot_type == SlotType.RESERVE for slot in config.slots) == 2
+    assert config.maximum_attempts == len(config.slots) == 8
+
+
+def test_multiday_supplement_schedule_avoids_known_collection_campaigns() -> None:
+    config = load_campaign_config(
+        Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml")
+    )
+    existing_campaign_starts = [
+        datetime(2026, 8, 3, 20, tzinfo=UTC),
+        datetime(2026, 8, 4, 2, tzinfo=UTC),
+        datetime(2026, 8, 4, 14, tzinfo=UTC),
+        datetime(2026, 8, 4, 20, tzinfo=UTC),
+        datetime(2026, 8, 5, 2, tzinfo=UTC),
+        datetime(2026, 8, 5, 14, tzinfo=UTC),
+        datetime(2026, 8, 7, 2, tzinfo=UTC),
+        datetime(2026, 8, 7, 14, tzinfo=UTC),
+        datetime(2026, 8, 8, 2, tzinfo=UTC),
+        datetime(2026, 8, 8, 14, tzinfo=UTC),
+    ]
+    conservative_buffer = timedelta(hours=2)
+
+    assert [slot.slot_id for slot in config.slots] == [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "R01",
+        "R02",
+    ]
+    for supplemental_slot in config.slots:
+        for existing_start in existing_campaign_starts:
+            assert abs(supplemental_slot.planned_start_utc - existing_start) >= (
+                timedelta(minutes=31) + conservative_buffer
+            )
 
 
 @pytest.mark.parametrize(
@@ -282,6 +347,222 @@ def test_two_campaigns_are_isolated_in_one_registry_root(
     intraday_events = read_ledger(ledger_path(intraday_config))
     assert {event.campaign_id for event in validation_events} == {validation_config.campaign_id}
     assert {event.campaign_id for event in intraday_events} == {intraday_config.campaign_id}
+
+
+def test_multiday_supplement_initialization_preserves_original_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "a" * 40)
+    original = _temp_campaign_config(tmp_path)
+    supplement = _temp_multiday_supplement_config(tmp_path)
+    original_registry = initialize_campaign(
+        original,
+        config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    original_ledger_before = ledger_path(original).read_bytes()
+
+    supplement_registry = initialize_campaign(
+        supplement,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+    validation = validate_campaign(supplement)
+
+    assert original_registry.campaign_id != supplement_registry.campaign_id
+    assert supplement_registry.campaign_role == CampaignRole.MULTI_DAY_VALIDATION
+    assert supplement_registry.runtime_git_commit == "a" * 40
+    assert ledger_path(original).read_bytes() == original_ledger_before
+    assert read_ledger(ledger_path(supplement))[0].event_type == (
+        LedgerEventType.CAMPAIGN_INITIALIZED
+    )
+    assert validation["validation_status"] == "VALID"
+    assert validation["attempt_count"] == 0
+    assert (
+        campaign_status_payload(supplement, supplement_registry)["next_scheduled_slot"]["slot_id"]
+        == "P01"
+    )
+
+
+def test_multiday_supplement_reserve_slots_are_not_required_after_primary_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    config = _temp_multiday_supplement_config(tmp_path)
+    initialize_campaign(
+        config,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+
+    registry = _record_accepted_slots(
+        config,
+        slot_ids=("P01", "P02", "P03", "P04", "P05", "P06"),
+        overlap_seconds=(1800, 1800, 1800, 1800, 1800, 1800),
+    )
+    status = campaign_status_payload(config, registry)
+
+    assert registry.accepted_attempt_count == 6
+    assert registry.accepted_overlap_seconds == 10_800
+    assert registry.completion_status.value == "SATISFIED"
+    assert registry.campaign_status.value == "COMPLETE"
+    assert registry.planned_slots["R01"].status.value == "PLANNED"
+    assert registry.planned_slots["R02"].status.value == "PLANNED"
+    assert status["reserve_slots_remaining"] == 2
+    assert status["next_scheduled_slot"]["slot_id"] == "R01"
+
+
+def test_composite_validation_manifest_verifies_aggregate_shortfall_fill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    original = _temp_campaign_config(tmp_path)
+    supplement = _temp_multiday_supplement_config(tmp_path)
+    initialize_campaign(original, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    initialize_campaign(
+        supplement,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+    _record_accepted_slots(
+        original,
+        slot_ids=("P02", "P03", "P09", "P10"),
+        overlap_seconds=(1800, 1800, 1800, 2030.1424609999995),
+    )
+    _record_accepted_slots(
+        supplement,
+        slot_ids=("P01", "P02", "P03", "P04", "P05", "P06"),
+        overlap_seconds=(1800, 1800, 1800, 1800, 1800, 1800),
+        start_index=4,
+    )
+
+    manifest, path = build_composite_validation_manifest(
+        (original, supplement),
+        output_path=tmp_path / "validated" / "composite_validation_manifest.json",
+    )
+
+    assert path.exists()
+    assert manifest.composite_dataset_label == COMPOSITE_VALIDATION_LABEL
+    assert manifest.source_campaign_ids == (original.campaign_id, supplement.campaign_id)
+    assert manifest.aggregate_accepted_session_count == 10
+    assert manifest.aggregate_paired_overlap_seconds == pytest.approx(18230.142461)
+    assert len(manifest.aggregate_accepted_calendar_dates) >= 3
+    assert set(manifest.aggregate_accepted_time_buckets) == {"AFTERNOON", "EVENING", "MORNING"}
+    assert [source.accepted_attempt_count for source in manifest.sources] == [4, 6]
+    assert len(manifest.accepted_attempts) == 10
+    assert all(entry.inclusion_status == "INCLUDED" for entry in manifest.accepted_attempts)
+    assert all(entry.attempt_runtime_commit for entry in manifest.accepted_attempts)
+    assert all(entry.validated_pair_manifest_id for entry in manifest.accepted_attempts)
+    assert all(entry.session_quality_report_hashes for entry in manifest.accepted_attempts)
+    assert all(entry.source_session_manifest_hashes for entry in manifest.accepted_attempts)
+    assert all(entry.source_raw_shard_checksums for entry in manifest.accepted_attempts)
+
+
+@pytest.mark.parametrize(
+    ("supplement_slots", "supplement_overlaps", "match"),
+    [
+        (
+            ("P01", "P02", "P03", "P04", "P05"),
+            (1800, 1800, 1800, 1800, 1800),
+            "accepted sessions",
+        ),
+        (
+            ("P01", "P02", "P03", "P04", "P05", "P06"),
+            (1500, 1500, 1500, 1500, 1500, 1500),
+            "accepted overlap",
+        ),
+    ],
+)
+def test_composite_validation_manifest_rejects_insufficient_aggregate_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supplement_slots: tuple[str, ...],
+    supplement_overlaps: tuple[float, ...],
+    match: str,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    original = _temp_campaign_config(tmp_path)
+    supplement = _temp_multiday_supplement_config(tmp_path)
+    initialize_campaign(original, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    initialize_campaign(
+        supplement,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+    _record_accepted_slots(
+        original,
+        slot_ids=("P02", "P03", "P09", "P10"),
+        overlap_seconds=(1800, 1800, 1800, 2030.1424609999995),
+    )
+    _record_accepted_slots(
+        supplement,
+        slot_ids=supplement_slots,
+        overlap_seconds=supplement_overlaps,
+        start_index=4,
+    )
+
+    with pytest.raises(CampaignValidationError, match=match):
+        build_composite_validation_manifest(
+            (original, supplement),
+            output_path=tmp_path / "composite_validation_manifest.json",
+        )
+
+
+def test_composite_validation_manifest_rejects_invalid_source_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    original = CampaignConfig.model_validate(
+        _campaign_payload(tmp_path, campaign_id="btc-usd-coinbase-kraken-2026-07-31-v1")
+    )
+    supplement = _temp_multiday_supplement_config(tmp_path)
+    initialize_campaign(original, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    initialize_campaign(
+        supplement,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+    ledger = ledger_path(original)
+    ledger.write_text(
+        ledger.read_text(encoding="utf-8").replace('"event_hash":"', '"event_hash":"bad', 1)
+    )
+
+    with pytest.raises(CampaignValidationError):
+        build_composite_validation_manifest(
+            (original, supplement),
+            output_path=tmp_path / "composite_validation_manifest.json",
+        )
+
+
+def test_composite_validation_manifest_rejects_missing_accepted_manifest_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    original = _temp_campaign_config(tmp_path)
+    supplement = _temp_multiday_supplement_config(tmp_path)
+    initialize_campaign(original, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    initialize_campaign(
+        supplement,
+        config_path=Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml"),
+    )
+    _record_accepted_slots(
+        original,
+        slot_ids=("P02", "P03", "P09", "P10"),
+        overlap_seconds=(1800, 1800, 1800, 2030.1424609999995),
+    )
+    _record_accepted_slots(
+        supplement,
+        slot_ids=("P01", "P02", "P03", "P04", "P05", "P06"),
+        overlap_seconds=(1800, 1800, 1800, 1800, 1800, 1800),
+        start_index=4,
+        omit_manifest_id_for_index=5,
+    )
+
+    with pytest.raises(CampaignValidationError, match="complete lineage"):
+        build_composite_validation_manifest(
+            (original, supplement),
+            output_path=tmp_path / "composite_validation_manifest.json",
+        )
 
 
 def test_runtime_migration_allowed_after_missed_slot_before_attempt(
@@ -608,6 +889,21 @@ def _temp_campaign_config(tmp_path: Path) -> CampaignConfig:
     return CampaignConfig.model_validate(payload)
 
 
+def _temp_multiday_supplement_config(tmp_path: Path) -> CampaignConfig:
+    config = load_campaign_config(
+        Path("configs/campaigns/multiday_supplement_btc_usd_2026_08.toml")
+    )
+    payload = config.model_dump(mode="python")
+    payload.update(
+        {
+            "registry_root": tmp_path / "campaigns",
+            "validated_manifest_root": tmp_path / "validated",
+            "normalized_output_root": tmp_path / "normalized",
+        }
+    )
+    return CampaignConfig.model_validate(payload)
+
+
 def _campaign_payload(
     tmp_path: Path,
     *,
@@ -673,6 +969,130 @@ def _started_attempt(config: CampaignConfig) -> AttemptSummary:
         requested_duration_seconds=config.requested_duration_seconds,
         attempt_status=AttemptStatus.STARTED,
         exclusion_reason="attempt not complete",
+    )
+
+
+def _record_accepted_slots(
+    config: CampaignConfig,
+    *,
+    slot_ids: tuple[str, ...],
+    overlap_seconds: tuple[float, ...],
+    start_index: int = 0,
+    omit_manifest_id_for_index: int | None = None,
+) -> Any:
+    registry = None
+    for offset, (slot_id, overlap) in enumerate(zip(slot_ids, overlap_seconds, strict=True)):
+        index = start_index + offset
+        accepted = _accepted_attempt(
+            config,
+            slot_id=slot_id,
+            index=index,
+            overlap=overlap,
+            omit_manifest_id=index == omit_manifest_id_for_index,
+        )
+        record_attempt_event(
+            config,
+            event_type=LedgerEventType.ATTEMPT_STARTED,
+            attempt=_started_from_accepted(accepted),
+        )
+        registry = record_attempt_event(
+            config,
+            event_type=LedgerEventType.ATTEMPT_ACCEPTED,
+            attempt=accepted,
+        )
+    assert registry is not None
+    return registry
+
+
+def _accepted_attempt(
+    config: CampaignConfig,
+    *,
+    slot_id: str,
+    index: int,
+    overlap: float,
+    omit_manifest_id: bool = False,
+) -> AttemptSummary:
+    slot = config.slot_by_id(slot_id)
+    return AttemptSummary(
+        campaign_id=config.campaign_id,
+        slot_id=slot.slot_id,
+        attempt_number=1,
+        campaign_attempt_id=f"{config.campaign_id}-{slot.slot_id}-001",
+        slot_type=slot.slot_type,
+        planned_start_utc=slot.planned_start_utc,
+        planned_start_local=slot.planned_start_local,
+        time_bucket=slot.time_bucket,
+        actual_started_at=slot.planned_start_utc,
+        actual_completed_at=slot.planned_start_utc + timedelta(seconds=1860),
+        requested_duration_seconds=config.requested_duration_seconds,
+        maximum_messages_per_venue=config.maximum_messages_per_venue,
+        attempt_runtime_git_commit=f"{index + 1:040x}"[-40:],
+        actual_collection_duration_seconds=1860,
+        paired_overlap_seconds=overlap,
+        paired_collection_id=f"paired-{index:02d}",
+        coinbase_session_id=f"coinbase-{index:02d}",
+        kraken_session_id=f"kraken-{index:02d}",
+        coinbase_frame_count=6000 + index,
+        kraken_frame_count=5900 + index,
+        coinbase_effective_duration_limit_seconds=1860,
+        kraken_effective_duration_limit_seconds=1860,
+        coinbase_effective_message_limit=100_000,
+        kraken_effective_message_limit=100_000,
+        coinbase_stop_reason="REQUESTED_DURATION_REACHED",
+        kraken_stop_reason="REQUESTED_DURATION_REACHED",
+        coinbase_trade_count=1000,
+        kraken_trade_count=1000,
+        coinbase_bbo_count=1000,
+        kraken_bbo_count=1000,
+        coinbase_archive_valid=True,
+        kraken_archive_valid=True,
+        coinbase_disposition="ACCEPTED",
+        kraken_disposition="ACCEPTED",
+        paired_disposition="ACCEPTED",
+        promotion_dry_run_allowed=True,
+        validated_pair_manifest_id=None if omit_manifest_id else f"validated-pair-{index:02d}",
+        validated_pair_manifest_path=f"validated-pair-{index:02d}.json",
+        validated_pair_manifest_sha256=f"{index + 2:064x}"[-64:],
+        source_session_manifest_hashes={
+            f"coinbase-{index:02d}": f"{index + 3:064x}"[-64:],
+            f"kraken-{index:02d}": f"{index + 4:064x}"[-64:],
+        },
+        source_raw_shard_checksums={
+            f"coinbase-{index:02d}": {"raw/part-00000.jsonl": f"{index + 5:064x}"[-64:]},
+            f"kraken-{index:02d}": {"raw/part-00000.jsonl": f"{index + 6:064x}"[-64:]},
+        },
+        session_quality_report_hashes={
+            f"coinbase-{index:02d}": f"{index + 7:064x}"[-64:],
+            f"kraken-{index:02d}": f"{index + 8:064x}"[-64:],
+        },
+        paired_quality_report_hash=f"{index + 9:064x}"[-64:],
+        attempt_status=AttemptStatus.ACCEPTED,
+        inclusion_status=InclusionStatus.INCLUDED,
+    )
+
+
+def _started_from_accepted(attempt: AttemptSummary) -> AttemptSummary:
+    return attempt.model_copy(
+        update={
+            "actual_completed_at": None,
+            "actual_collection_duration_seconds": None,
+            "paired_overlap_seconds": 0.0,
+            "paired_collection_id": None,
+            "coinbase_session_id": None,
+            "kraken_session_id": None,
+            "coinbase_frame_count": 0,
+            "kraken_frame_count": 0,
+            "validated_pair_manifest_id": None,
+            "validated_pair_manifest_path": None,
+            "validated_pair_manifest_sha256": None,
+            "source_session_manifest_hashes": {},
+            "source_raw_shard_checksums": {},
+            "session_quality_report_hashes": {},
+            "paired_quality_report_hash": None,
+            "attempt_status": AttemptStatus.STARTED,
+            "inclusion_status": InclusionStatus.EXCLUDED,
+            "exclusion_reason": "attempt not complete",
+        }
     )
 
 

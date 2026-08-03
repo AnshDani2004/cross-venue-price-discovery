@@ -400,6 +400,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
     )
+    composite_validation = subparsers.add_parser(
+        "build-composite-validation-manifest",
+        help="validate aggregate coverage across separate multi-day campaign ledgers",
+    )
+    composite_validation.add_argument(
+        "--campaign-id",
+        action="append",
+        required=True,
+        help="source campaign ID; repeat once per source campaign",
+    )
+    composite_validation.add_argument("--output-path", type=Path, required=True)
+    composite_validation.add_argument("--minimum-accepted-sessions", type=int, default=10)
+    composite_validation.add_argument("--minimum-overlap-seconds", type=float, default=18_000)
+    composite_validation.add_argument("--minimum-calendar-dates", type=int, default=3)
+    composite_validation.add_argument("--minimum-time-buckets", type=int, default=3)
     migrate = subparsers.add_parser(
         "migrate-campaign-runtime",
         help="append a controlled pre-collection campaign runtime migration",
@@ -793,6 +808,32 @@ def main(
             print(f"Campaign finalization failed: {exc}")
             return 1
         print(json_dumps({"manifest": manifest.model_dump(mode="json"), "path": str(path)}))
+        return 0
+    if args.command == "build-composite-validation-manifest":
+        from cross_venue.campaigns.composite_validation import (
+            build_composite_validation_manifest,
+        )
+        from cross_venue.campaigns.config import load_campaign_config_for_id
+        from cross_venue.campaigns.exceptions import CampaignError
+
+        try:
+            campaign_configs = tuple(
+                load_campaign_config_for_id(campaign_id) for campaign_id in args.campaign_id
+            )
+            composite_manifest, path = build_composite_validation_manifest(
+                campaign_configs,
+                output_path=args.output_path,
+                minimum_accepted_sessions=args.minimum_accepted_sessions,
+                minimum_total_accepted_overlap_seconds=args.minimum_overlap_seconds,
+                minimum_calendar_dates=args.minimum_calendar_dates,
+                minimum_time_buckets=args.minimum_time_buckets,
+            )
+        except CampaignError as exc:
+            print(f"Composite validation manifest failed: {exc}")
+            return 1
+        print(
+            json_dumps({"manifest": composite_manifest.model_dump(mode="json"), "path": str(path)})
+        )
         return 0
     if args.command == "migrate-campaign-runtime":
         from cross_venue.campaigns.config import load_campaign_config_for_id
