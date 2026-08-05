@@ -49,3 +49,7 @@
   tooling with read-only collection roots, deterministic IDs, Decimal overlap
   aggregation, write-once artifacts, validation/status CLI commands, and fixture
   coverage for inclusion, exclusion, lineage, and immutability behavior.
+- Add Phase 3C.2 analysis-snapshot normalization with snapshot-membership replay,
+  expanded canonical trade/BBO lineage, derived BBO metrics, session and attempt
+  metadata tables, per-session normalization manifests, no-op reuse, module CLI
+  execution, and real seven-session validation/determinism outputs.

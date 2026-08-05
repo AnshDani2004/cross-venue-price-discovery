@@ -50,6 +50,8 @@ from cross_venue.schemas import Exchange
 from cross_venue.storage.checksum import sha256_file
 from cross_venue.storage.manifest_store import atomic_write_json
 
+FIXTURE_RUNTIME_COMMIT = "98e28b2e026124434fc1bec1d442d7b9bcbc8530"  # pragma: allowlist secret
+
 
 def test_normalization_config_loads_defaults_and_rejects_bad_values(tmp_path: Path) -> None:
     config = load_normalization_config(Path("configs/normalization.toml"))
@@ -490,7 +492,7 @@ async def _analysis_snapshot_fixture(
                 paired_report.kraken_report.input_shard_checksums
             ),
         },
-        attempt_runtime_git_commit="98e28b2e026124434fc1bec1d442d7b9bcbc8530",
+        attempt_runtime_git_commit=FIXTURE_RUNTIME_COMMIT,
         quality_code_git_commit=paired_report.quality_code_git_commit,
         quality_policy_version=validated.quality_policy_version,
         inclusion_status="INCLUDED",
@@ -516,7 +518,7 @@ async def _analysis_snapshot_fixture(
         completion_status="INCOMPLETE",
         instrument="BTC-USD",
         venues=(Exchange.COINBASE, Exchange.KRAKEN),
-        runtime_git_commit="98e28b2e026124434fc1bec1d442d7b9bcbc8530",
+        runtime_git_commit=FIXTURE_RUNTIME_COMMIT,
         quality_policy_version=validated.quality_policy_version,
         quality_policy_sha256="d" * 64,
         campaign_config_path="configs/campaigns/fixture.toml",

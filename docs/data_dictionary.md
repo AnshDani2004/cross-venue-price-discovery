@@ -241,3 +241,20 @@ nullable `campaign_id`, `slot_id`, `campaign_attempt_id`, `time_bucket`,
 `validated_campaign_manifest_id`, and `validated_campaign_manifest_sha256`. Normalized
 trade and top-of-book rows also include `source_event_id`, a deterministic source-lineage
 ID that is stable across individual pair and campaign normalization runs.
+
+## Phase 3C.2 Analysis Snapshot Normalization
+
+Analysis-snapshot trade and BBO rows also include `dataset_snapshot_id`,
+`source_catalog_id`, source quality and raw-shard hashes, collection runtime commit,
+quality code commit, quality policy version, parser version, and duplicate
+classification. Trades include exact `notional`.
+
+BBO rows include `midprice`, `spread`, `relative_spread`, `spread_basis_points`,
+`quoted_depth`, `bid_ask_imbalance`, `locked_market_indicator`, and
+`crossed_market_indicator`. Locked and crossed source quote states are preserved and
+classified instead of being silently removed.
+
+The analysis normalization pipeline writes `metadata/sessions.parquet` with one row per
+venue session and `metadata/attempts.parquet` with one row per accepted paired attempt.
+These metadata tables preserve snapshot, campaign, attempt, paired collection, session,
+runtime, quality, and normalization disposition fields for auditable downstream research.

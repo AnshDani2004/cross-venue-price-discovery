@@ -225,3 +225,14 @@ after initialization.
 The multi-day campaign remains the confirmatory cross-day validation dataset. The
 intraday campaign is exploratory and hypothesis-generating; its completion does not
 satisfy the three-date requirement for cross-day conclusions.
+
+## Phase 03C Analysis Snapshot Normalization
+
+Phase 3C.2 consumes immutable analysis snapshots rather than rediscovering campaign
+membership from operational state. The normalizer replays only the validated-pair
+manifests listed in the snapshot source catalog, writes outputs under
+`data/analysis/normalized/`, and preserves source collection data without modification.
+
+The aggregate normalized-snapshot manifest links back to the source snapshot and catalog.
+Per-session normalization manifests carry cache keys for future incremental eight-,
+nine-, or ten-session snapshots.

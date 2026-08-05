@@ -44,6 +44,7 @@ from cross_venue.research.source_snapshot import (
 )
 from cross_venue.schemas import Exchange
 
+FIXTURE_RUNTIME_COMMIT = "98e28b2e026124434fc1bec1d442d7b9bcbc8530"  # pragma: allowlist secret
 CAMPAIGN_ID = "btc-usd-coinbase-kraken-2026-07-31-v1"
 INTRADAY_ID = "btc-usd-coinbase-kraken-2026-07-31-intraday-v1"
 ACCEPTED_ATTEMPT_IDS = (
@@ -514,7 +515,7 @@ async def make_pair_entry(
         },
         session_quality_report_hashes=validated.session_quality_report_hashes,
         paired_quality_report_hash=_model_hash(paired_report),
-        attempt_runtime_git_commit="98e28b2e026124434fc1bec1d442d7b9bcbc8530",
+        attempt_runtime_git_commit=FIXTURE_RUNTIME_COMMIT,
         attempt_status=status,
         inclusion_status=inclusion,
         exclusion_reason="PAIRED_QUALITY_QUARANTINED"
@@ -557,7 +558,7 @@ def write_campaign_state(
         campaign_config_sha256=sha256_file(config_path),
         quality_policy_version="2d.2",
         quality_policy_sha256=sha256_file(source_root / "configs/data_quality.toml"),
-        runtime_git_commit="98e28b2e026124434fc1bec1d442d7b9bcbc8530",
+        runtime_git_commit=FIXTURE_RUNTIME_COMMIT,
         runtime_working_tree_clean=True,
         created_at=created,
         updated_at=created,
