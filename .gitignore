@@ -39,6 +39,7 @@ data/raw/*
 data/normalized/*
 data/campaigns/*
 data/features/*
+data/analysis/*
 data/manifests/*
 data/quality/*
 data/validated/*
@@ -52,6 +53,7 @@ reports/generated/
 !data/raw/.gitkeep
 !data/normalized/.gitkeep
 !data/features/.gitkeep
+!data/analysis/.gitkeep
 !data/manifests/.gitkeep
 !data/quality/.gitkeep
 !data/validated/.gitkeep

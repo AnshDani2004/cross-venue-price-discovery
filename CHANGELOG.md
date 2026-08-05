@@ -45,3 +45,7 @@
 - Remove the remaining collector-internal archival sink cap, add typed collector stop
   reasons and effective per-venue run-limit diagnostics, and cover campaign limits
   through real collector stop predicates.
+- Add Phase 3C.1 immutable source-catalog and seven-session analysis snapshot
+  tooling with read-only collection roots, deterministic IDs, Decimal overlap
+  aggregation, write-once artifacts, validation/status CLI commands, and fixture
+  coverage for inclusion, exclusion, lineage, and immutability behavior.

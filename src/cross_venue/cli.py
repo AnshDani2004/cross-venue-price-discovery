@@ -417,6 +417,35 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         required=True,
     )
+    build_snapshot = subparsers.add_parser(
+        "build-analysis-source-snapshot",
+        help="build an immutable source catalog and analysis snapshot from read-only campaign data",
+    )
+    build_snapshot.add_argument("--source-collection-root", type=Path, required=True)
+    build_snapshot.add_argument(
+        "--analysis-output-root",
+        type=Path,
+        default=Path("data/analysis"),
+    )
+    build_snapshot.add_argument(
+        "--campaign-id",
+        action="append",
+        dest="campaign_ids",
+        required=True,
+        help="source campaign ID; repeat to include multiple campaigns",
+    )
+    build_snapshot.add_argument("--snapshot-label")
+    validate_snapshot = subparsers.add_parser(
+        "validate-analysis-source-snapshot",
+        help="validate an existing immutable analysis source snapshot",
+    )
+    validate_snapshot.add_argument("--snapshot-root", type=Path, required=True)
+    validate_snapshot.add_argument("--source-collection-root", type=Path)
+    snapshot_status = subparsers.add_parser(
+        "analysis-snapshot-status",
+        help="print a compact analysis source snapshot status",
+    )
+    snapshot_status.add_argument("--snapshot-root", type=Path, required=True)
     return parser
 
 
@@ -815,6 +844,47 @@ def main(
             print(f"Campaign runtime migration failed: {exc}")
             return 1
         print(json_dumps(migration_report))
+        return 0
+    if args.command == "build-analysis-source-snapshot":
+        from cross_venue.research.exceptions import ResearchSnapshotError
+        from cross_venue.research.source_snapshot import build_analysis_source_snapshot
+
+        try:
+            snapshot_build_result = build_analysis_source_snapshot(
+                source_collection_root=args.source_collection_root,
+                analysis_output_root=args.analysis_output_root,
+                campaign_ids=tuple(args.campaign_ids),
+                snapshot_label=args.snapshot_label,
+            )
+        except ResearchSnapshotError as exc:
+            print(f"Analysis source snapshot failed: {exc}")
+            return 1
+        print(snapshot_build_result.to_text())
+        return 0
+    if args.command == "validate-analysis-source-snapshot":
+        from cross_venue.research.exceptions import ResearchSnapshotError
+        from cross_venue.research.source_snapshot import validate_analysis_source_snapshot
+
+        try:
+            validation = validate_analysis_source_snapshot(
+                snapshot_root=args.snapshot_root,
+                source_collection_root=args.source_collection_root,
+            )
+        except ResearchSnapshotError as exc:
+            print(f"Analysis source snapshot validation failed: {exc}")
+            return 1
+        print(json_dumps(validation.model_dump(mode="json")))
+        return 0 if validation.validation_status == "VALID" else 1
+    if args.command == "analysis-snapshot-status":
+        from cross_venue.research.exceptions import ResearchSnapshotError
+        from cross_venue.research.source_snapshot import snapshot_status
+
+        try:
+            status = snapshot_status(args.snapshot_root)
+        except ResearchSnapshotError as exc:
+            print(f"Analysis snapshot status failed: {exc}")
+            return 1
+        print(json_dumps(status))
         return 0
     return 0
 
