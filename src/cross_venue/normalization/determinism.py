@@ -77,7 +77,7 @@ def _file_hashes(manifest: dict[str, Any], key: str) -> dict[str, str]:
 
 
 def _manifest_equivalence(first: dict[str, Any], second: dict[str, Any]) -> bool:
-    ignored = {"created_at"}
+    ignored = {"created_at", "per_session_normalization_manifest_files"}
     first_filtered = {key: value for key, value in first.items() if key not in ignored}
     second_filtered = {key: value for key, value in second.items() if key not in ignored}
     return first_filtered == second_filtered

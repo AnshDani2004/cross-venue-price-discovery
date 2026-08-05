@@ -81,12 +81,12 @@ def test_valid_top_of_book_allows_zero_size() -> None:
     assert top.best_bid_size == Decimal("0")
 
 
-def test_top_of_book_rejects_crossed_and_locked_markets() -> None:
-    with pytest.raises(ValidationError, match="strictly below"):
-        valid_top_of_book(best_bid_price=Decimal("68000.30"))
+def test_top_of_book_preserves_crossed_and_locked_markets_for_classification() -> None:
+    crossed = valid_top_of_book(best_bid_price=Decimal("68000.30"))
+    locked = valid_top_of_book(best_bid_price=Decimal("68000.27"))
 
-    with pytest.raises(ValidationError, match="strictly below"):
-        valid_top_of_book(best_bid_price=Decimal("68000.27"))
+    assert crossed.best_bid_price > crossed.best_ask_price
+    assert locked.best_bid_price == locked.best_ask_price
 
 
 def test_normalized_events_reject_naive_timestamps_and_unknown_fields() -> None:

@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from cross_venue.schemas.identifiers import Exchange
 from cross_venue.schemas.market_data import TradeSide
@@ -85,12 +85,6 @@ class NormalizedTopOfBook(NormalizedEventBase):
         if value < Decimal("0"):
             raise ValueError("top-of-book sizes must be nonnegative")
         return value
-
-    @model_validator(mode="after")
-    def best_bid_must_be_below_best_ask(self) -> NormalizedTopOfBook:
-        if self.best_bid_price >= self.best_ask_price:
-            raise ValueError("best bid must be strictly below best ask")
-        return self
 
 
 type NormalizedMarketEvent = NormalizedTrade | NormalizedTopOfBook

@@ -446,6 +446,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="print a compact analysis source snapshot status",
     )
     snapshot_status.add_argument("--snapshot-root", type=Path, required=True)
+    normalize_snapshot = subparsers.add_parser(
+        "normalize-analysis-snapshot",
+        help="normalize an immutable analysis source snapshot into research Parquet outputs",
+    )
+    normalize_snapshot.add_argument("--source-collection-root", type=Path, required=True)
+    normalize_snapshot.add_argument("--snapshot-root", type=Path, required=True)
+    normalize_snapshot.add_argument(
+        "--analysis-output-root",
+        type=Path,
+        default=Path("data/analysis"),
+    )
+    normalize_snapshot.add_argument(
+        "--normalization-config",
+        type=Path,
+        default=Path("configs/normalization.toml"),
+    )
+    normalize_snapshot.add_argument("--expected-commit")
+    normalize_snapshot.add_argument("--dry-run", action="store_true")
+    normalize_snapshot.add_argument(
+        "--attempt-id",
+        help="debug a single accepted attempt; rejected if outside snapshot membership",
+    )
+    normalized_status = subparsers.add_parser(
+        "analysis-normalization-status",
+        help="print a compact normalized analysis-snapshot status",
+    )
+    normalized_status.add_argument("--normalization-manifest", type=Path, required=True)
     return parser
 
 
@@ -886,7 +913,90 @@ def main(
             return 1
         print(json_dumps(status))
         return 0
+    if args.command == "normalize-analysis-snapshot":
+        from cross_venue.research.exceptions import ResearchSnapshotError
+        from cross_venue.research.source_snapshot import (
+            AnalysisSourceCatalog,
+            validate_analysis_source_snapshot,
+        )
+
+        try:
+            source_root = args.source_collection_root.expanduser().resolve()
+            validation = validate_analysis_source_snapshot(
+                snapshot_root=args.snapshot_root,
+                source_collection_root=source_root,
+            )
+            if validation.validation_status != "VALID":
+                print(json_dumps(validation.model_dump(mode="json")))
+                return 1
+            snapshot_manifest = args.snapshot_root / "snapshot_manifest.json"
+            if args.attempt_id:
+                catalog = AnalysisSourceCatalog.model_validate_json(
+                    (args.snapshot_root / "source_catalog.json").read_text(encoding="utf-8")
+                )
+                if args.attempt_id not in {
+                    attempt.campaign_attempt_id for attempt in catalog.accepted_attempts
+                }:
+                    print("Normalization failed: attempt is outside analysis snapshot membership")
+                    return 1
+            storage_config = _source_storage_config(source_root)
+            quality_config = _source_quality_config(source_root)
+            normalization_config = load_normalization_config(args.normalization_config).model_copy(
+                update={"output_root": args.analysis_output_root / "normalized"}
+            )
+            result = normalize_dataset(
+                snapshot_manifest,
+                storage_config=storage_config,
+                quality_config=quality_config,
+                normalization_config=normalization_config,
+                dry_run=args.dry_run,
+                expected_commit=args.expected_commit,
+            )
+        except (ResearchSnapshotError, NormalizationError, OSError) as exc:
+            print(f"Analysis snapshot normalization failed: {exc}")
+            return 1
+        if isinstance(result, dict):
+            print(json_dumps(result))
+        else:
+            print(result.to_text())
+        return 0
+    if args.command == "analysis-normalization-status":
+        try:
+            manifest = json.loads(args.normalization_manifest.read_text(encoding="utf-8"))
+        except OSError as exc:
+            print(f"Analysis normalization status failed: {exc}")
+            return 1
+        status = {
+            "normalized_dataset_id": manifest.get("normalized_dataset_id"),
+            "normalization_manifest_id": manifest.get("normalization_manifest_id"),
+            "source_analysis_snapshot_id": manifest.get("source_analysis_snapshot_id"),
+            "source_catalog_id": manifest.get("source_catalog_id"),
+            "accepted_attempt_count": manifest.get("accepted_attempt_count"),
+            "venue_session_count": manifest.get("venue_session_count"),
+            "trade_row_count": manifest.get("trade_row_count"),
+            "top_of_book_row_count": manifest.get("top_of_book_row_count"),
+            "raw_record_outcome_row_count": manifest.get("raw_record_outcome_row_count"),
+            "validation_status": manifest.get("validation_status"),
+            "final_composite_status": manifest.get("final_composite_status"),
+        }
+        print(json_dumps(status))
+        return 0
     return 0
+
+
+def _source_storage_config(source_root: Path) -> StorageConfig:
+    storage_config = load_storage_config(source_root / "configs" / "storage.toml")
+    return storage_config.model_copy(update={"archive_root": source_root / "data" / "raw"})
+
+
+def _source_quality_config(source_root: Path) -> DataQualityConfig:
+    quality_config = load_data_quality_config(source_root / "configs" / "data_quality.toml")
+    return quality_config.model_copy(
+        update={
+            "report_root": source_root / "data" / "quality",
+            "validated_manifest_root": source_root / "data" / "validated" / "manifests",
+        }
+    )
 
 
 async def _run_smoke_collect(venue: str, limits: RunLimits) -> CollectorRunSummary:

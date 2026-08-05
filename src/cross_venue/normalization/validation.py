@@ -29,6 +29,8 @@ def validate_normalized_dataset(normalization_manifest_path: Path) -> dict[str, 
         ("trade_files", "trade_row_count"),
         ("top_of_book_files", "top_of_book_row_count"),
         ("raw_record_outcome_files", "raw_record_outcome_row_count"),
+        ("session_metadata_files", "session_metadata_row_count"),
+        ("attempt_metadata_files", "attempt_metadata_row_count"),
     ):
         for entry in manifest.get(key, []):
             path = dataset_root / entry["relative_path"]
@@ -38,10 +40,29 @@ def validate_normalized_dataset(normalization_manifest_path: Path) -> dict[str, 
             actual_sha = sha256_file(path)
             if actual_sha != entry["sha256"]:
                 errors.append(f"output checksum mismatch: {entry['relative_path']}")
-            table = pq.read_table(path)
+                continue
+            try:
+                table = pq.read_table(path)
+            except Exception as exc:
+                errors.append(
+                    f"output checksum mismatch or unreadable Parquet: {entry['relative_path']}"
+                )
+                errors.append(str(exc))
+                continue
             if table.num_rows != entry["row_count"]:
                 errors.append(f"row count mismatch: {entry['relative_path']}")
-            table_counts[entry["table"]] += table.num_rows
+            if entry["table"] in table_counts:
+                table_counts[entry["table"]] += table.num_rows
+    for entry in manifest.get("per_session_normalization_manifest_files", []):
+        path = dataset_root / entry["relative_path"]
+        if not path.exists():
+            errors.append(f"missing session normalization manifest: {entry['relative_path']}")
+            continue
+        actual_sha = sha256_file(path)
+        if actual_sha != entry["sha256"]:
+            errors.append(
+                f"session normalization manifest checksum mismatch: {entry['relative_path']}"
+            )
     if table_counts["trades"] != manifest["trade_row_count"]:
         errors.append("manifest trade row count mismatch")
     if table_counts["top_of_book"] != manifest["top_of_book_row_count"]:
@@ -50,6 +71,18 @@ def validate_normalized_dataset(normalization_manifest_path: Path) -> dict[str, 
         errors.append("manifest outcome row count mismatch")
     if manifest["source_raw_record_count"] != manifest["raw_record_outcome_row_count"]:
         errors.append("source raw record count does not match outcome rows")
+    if errors:
+        report = {
+            "validation_status": "INVALID",
+            "errors": errors,
+            "trade_row_count": table_counts["trades"],
+            "top_of_book_row_count": table_counts["top_of_book"],
+            "raw_record_outcome_row_count": table_counts["raw_record_outcomes"],
+            "duplicate_event_id_count": None,
+        }
+        report_path = dataset_root / "validation" / "validation_report.json"
+        atomic_write_json(report_path, dict(report))
+        raise NormalizedDatasetValidationError("; ".join(errors))
     event_ids = _event_ids(dataset_root, manifest)
     duplicate_event_ids = len(event_ids) - len(set(event_ids))
     if duplicate_event_ids:
