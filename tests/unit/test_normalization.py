@@ -150,6 +150,7 @@ def test_analysis_snapshot_normalization_preserves_snapshot_lineage(tmp_path: Pa
     assert not isinstance(result, dict)
     manifest = result.manifest
     assert manifest["source_analysis_snapshot_id"].startswith("analysis-snapshot-1-session")
+    assert manifest["normalized_dataset_id"].startswith("normalized-analysis-snapshot-1-session")
     assert manifest["source_catalog_id"].startswith("analysis-source-catalog-fixture")
     assert manifest["accepted_attempt_count"] == 1
     assert manifest["venue_session_count"] == 2

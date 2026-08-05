@@ -595,7 +595,9 @@ def normalized_dataset_id(
     normalizer_git_commit: str,
 ) -> str:
     identity = bundle.dataset_identity
-    if bundle.campaign_manifest is None:
+    if bundle.analysis_snapshot is not None:
+        identity = bundle.analysis_snapshot.snapshot_id
+    elif bundle.campaign_manifest is None:
         identity = bundle.primary_context.validated_manifest.paired_collection_ids[0]
     full_hash = stable_event_id(
         [
