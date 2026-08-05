@@ -86,7 +86,7 @@ Generated normalized data remains ignored by Git.
 ## Real Seven-Session Results
 
 - normalized dataset ID: `normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07`
-- normalized manifest ID: `normalized-snapshot-manifest-2196d1f5167a258c`
+- normalized manifest ID: `normalized-snapshot-manifest-d233cc36d6d46cad`
 - normalizer code commit: `e534e672c074fa12e0a19b85f9797adb535e97a1`
 - accepted attempts: 7
 - venue sessions: 14
