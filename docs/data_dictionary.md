@@ -218,3 +218,25 @@ spread, microprice, imbalance, or predictive fields.
 `normalization_outcome`, trade/BBO row counts, parse status, bounded parse error text,
 unsupported reason, frame type, source message type, source channel, and duplicate
 metadata. It never embeds full raw payloads.
+
+## Phase 3B Campaign Data
+
+The campaign registry is an ignored JSON document under `data/campaigns` that summarizes
+campaign status, fixed slots, attempts, accepted overlap, calendar-date coverage,
+time-bucket coverage, and completion requirements. The append-only ledger is a JSONL
+hash chain with event index, event type, occurrence timestamp, optional slot ID,
+optional campaign attempt ID, bounded payload, previous event hash, and event hash.
+
+Slots include `slot_id`, `slot_type`, UTC and local planned start timestamps, a
+predeclared `time_bucket`, and current slot status. Attempts include slot identity,
+attempt number, actual start and completion timestamps, paired collection identity,
+venue session IDs, archive validation status, quality dispositions, validated pair
+manifest references, failure classification, bounded failure message, inclusion status,
+and exclusion reason.
+
+Validated campaign manifests include only accepted attempts and preserve excluded
+attempt summaries. Campaign-level normalized rows add nullable `campaign_id`, `slot_id`,
+`campaign_attempt_id`, `time_bucket`, `validated_campaign_manifest_id`, and
+`validated_campaign_manifest_sha256`. Normalized trade and top-of-book rows also include
+`source_event_id`, a deterministic source-lineage ID that is stable across individual
+pair and campaign normalization runs.

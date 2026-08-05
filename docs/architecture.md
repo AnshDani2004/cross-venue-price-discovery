@@ -186,3 +186,27 @@ strategy logic.
 Phase 3A creates deterministic analytical storage from accepted raw data. It preserves
 raw duplicates and emits one raw-record outcome per source record. Research conclusions
 remain out of scope until later phases.
+
+## Phase 03B Campaign Flow
+
+Phase 3B adds an operational campaign layer around the existing public collectors,
+archive validation, quality reports, validated manifests, and normalization pipeline.
+
+```text
+Campaign config
+  -> fixed schedule
+  -> append-only attempt ledger
+  -> derived campaign registry
+  -> paired public collection
+  -> archive validation
+  -> quality analysis
+  -> individual validated pair manifests
+  -> campaign completion validation
+  -> validated campaign manifest
+  -> multi-session normalization
+```
+
+The ledger is the audit trail; the registry is a derived current-state view. Every
+accepted, quarantined, rejected, failed, aborted, and missed attempt remains visible.
+Phase 3B does not add research features, lead-lag analysis, backtests, execution
+simulation, PnL, authenticated APIs, or trading.

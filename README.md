@@ -24,9 +24,12 @@ without skipping data integrity, timestamp discipline, or risk controls.
   manifest only.
 - Phase 3A: Deterministic normalization implemented; accepted raw data can be replayed
   into validated Parquet and DuckDB datasets. Exploratory research has not started.
+- Phase 3B: Campaign infrastructure implemented for a fixed multi-session Coinbase and
+  Kraken BTC-USD collection campaign. The multi-day collection campaign is in progress.
+  No exploratory price-discovery conclusions have been produced.
 
-No normalized datasets, predictive models, fair-value models, backtests, trading
-policies, or execution simulators have been implemented.
+No predictive models, fair-value models, backtests, trading policies, or execution
+simulators have been implemented.
 
 ## Fixed Initial Scope
 
@@ -91,6 +94,9 @@ python -m cross_venue promote-dataset --paired-report data/quality/paired/<paire
 python -m cross_venue normalize-dataset --validated-manifest data/validated/manifests/<validated_manifest>.json
 python -m cross_venue validate-normalized-dataset --normalization-manifest data/normalized/dataset=<normalized_dataset_id>/manifest/normalization_manifest.json
 python -m cross_venue build-normalized-catalog --normalization-manifest data/normalized/dataset=<normalized_dataset_id>/manifest/normalization_manifest.json
+python -m cross_venue init-collection-campaign --campaign-config configs/campaigns/phase_3b_btc_usd.toml
+python -m cross_venue campaign-status --campaign-id btc-usd-coinbase-kraken-2026-07-31-v1
+python -m cross_venue run-campaign-slot --campaign-id btc-usd-coinbase-kraken-2026-07-31-v1 --slot-id P01
 ```
 
 The smoke collector is bounded, public-only, and no-write. It prints an in-memory

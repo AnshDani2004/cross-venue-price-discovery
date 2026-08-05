@@ -46,6 +46,8 @@ from cross_venue.storage.recovery import RecoveryResult, recover_session
 from cross_venue.storage.session import build_manifest, build_quality_summary
 from cross_venue.storage.validation import ArchiveValidationResult, validate_archive
 
+PHASE_3B_CAMPAIGN_ID = "btc-usd-coinbase-kraken-2026-07-31-v1"
+
 
 class SmokeRunner(Protocol):
     """Injectable smoke runner for CLI tests."""
@@ -322,6 +324,80 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/data_quality.toml"),
     )
+    init_campaign = subparsers.add_parser(
+        "init-collection-campaign",
+        help="initialize the fixed Phase 3B campaign registry and ledger",
+    )
+    init_campaign.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    campaign_status = subparsers.add_parser(
+        "campaign-status",
+        help="print and persist current Phase 3B campaign status",
+    )
+    campaign_status.add_argument("--campaign-id", default=PHASE_3B_CAMPAIGN_ID)
+    campaign_status.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    run_slot = subparsers.add_parser(
+        "run-campaign-slot",
+        help="run one currently due fixed Phase 3B campaign slot",
+    )
+    run_slot.add_argument("--campaign-id", default=PHASE_3B_CAMPAIGN_ID)
+    run_slot.add_argument("--slot-id", required=True)
+    run_slot.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    run_slot.add_argument("--storage-config", type=Path, default=Path("configs/storage.toml"))
+    run_slot.add_argument("--quality-policy", type=Path, default=Path("configs/data_quality.toml"))
+    missed = subparsers.add_parser(
+        "mark-campaign-slot-missed",
+        help="mark a fixed campaign slot missed with an enumerated reason",
+    )
+    missed.add_argument("--campaign-id", default=PHASE_3B_CAMPAIGN_ID)
+    missed.add_argument("--slot-id", required=True)
+    missed.add_argument(
+        "--reason",
+        choices=(
+            "IMPLEMENTATION_NOT_READY",
+            "USER_UNAVAILABLE",
+            "SYSTEM_UNAVAILABLE",
+            "NETWORK_UNAVAILABLE",
+            "SLOT_WINDOW_EXPIRED",
+            "CAMPAIGN_ALREADY_COMPLETE",
+        ),
+    )
+    missed.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    validate_campaign_parser = subparsers.add_parser(
+        "validate-collection-campaign",
+        help="validate Phase 3B campaign registry, ledger, and accepted-attempt rules",
+    )
+    validate_campaign_parser.add_argument("--campaign-id", default=PHASE_3B_CAMPAIGN_ID)
+    validate_campaign_parser.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
+    finalize = subparsers.add_parser(
+        "finalize-campaign-manifest",
+        help="create the validated campaign manifest after completion",
+    )
+    finalize.add_argument("--campaign-id", default=PHASE_3B_CAMPAIGN_ID)
+    finalize.add_argument(
+        "--campaign-config",
+        type=Path,
+        default=Path("configs/campaigns/phase_3b_btc_usd.toml"),
+    )
     return parser
 
 
@@ -582,6 +658,113 @@ def main(
             print(f"Determinism verification failed: {exc}")
             return 1
         print(json_dumps(determinism_report))
+        return 0
+    if args.command == "init-collection-campaign":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.registry import initialize_campaign
+        from cross_venue.campaigns.reporting import registry_summary_text
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            registry = initialize_campaign(campaign_config, config_path=args.campaign_config)
+        except CampaignError as exc:
+            print(f"Campaign initialization failed: {exc}")
+            return 1
+        print(registry_summary_text(registry))
+        return 0
+    if args.command == "campaign-status":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.registry import (
+            campaign_status_payload,
+            validate_registry_and_ledger,
+            write_status_reports,
+        )
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            if args.campaign_id != campaign_config.campaign_id:
+                raise CampaignError("campaign ID does not match configured fixed campaign")
+            registry = validate_registry_and_ledger(campaign_config)
+            write_status_reports(campaign_config, registry)
+            print(json_dumps(campaign_status_payload(campaign_config, registry)))
+        except CampaignError as exc:
+            print(f"Campaign status failed: {exc}")
+            return 1
+        return 0
+    if args.command == "run-campaign-slot":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.runner import run_campaign_slot
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            if args.campaign_id != campaign_config.campaign_id:
+                raise CampaignError("campaign ID does not match configured fixed campaign")
+            attempt = asyncio.run(
+                run_campaign_slot(
+                    campaign_config,
+                    slot_id=args.slot_id,
+                    storage_config=load_storage_config(args.storage_config),
+                    quality_config=load_data_quality_config(args.quality_policy),
+                )
+            )
+        except CampaignError as exc:
+            print(f"Campaign slot failed: {exc}")
+            return 1
+        print(json_dumps(attempt.model_dump(mode="json")))
+        return 0
+    if args.command == "mark-campaign-slot-missed":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.models import MissedReason
+        from cross_venue.campaigns.registry import mark_slot_missed
+        from cross_venue.campaigns.reporting import registry_summary_text
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            if args.campaign_id != campaign_config.campaign_id:
+                raise CampaignError("campaign ID does not match configured fixed campaign")
+            registry = mark_slot_missed(
+                campaign_config,
+                slot_id=args.slot_id,
+                reason=MissedReason(args.reason),
+            )
+        except CampaignError as exc:
+            print(f"Mark missed failed: {exc}")
+            return 1
+        print(registry_summary_text(registry))
+        return 0
+    if args.command == "validate-collection-campaign":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.validation import validate_campaign
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            if args.campaign_id != campaign_config.campaign_id:
+                raise CampaignError("campaign ID does not match configured fixed campaign")
+            campaign_validation_report = validate_campaign(campaign_config)
+        except CampaignError as exc:
+            print(f"Campaign validation failed: {exc}")
+            return 1
+        print(json_dumps(campaign_validation_report))
+        return 0
+    if args.command == "finalize-campaign-manifest":
+        from cross_venue.campaigns.config import load_campaign_config
+        from cross_venue.campaigns.exceptions import CampaignError
+        from cross_venue.campaigns.manifest import finalize_campaign_manifest
+
+        try:
+            campaign_config = load_campaign_config(args.campaign_config)
+            if args.campaign_id != campaign_config.campaign_id:
+                raise CampaignError("campaign ID does not match configured fixed campaign")
+            manifest, path = finalize_campaign_manifest(campaign_config)
+        except CampaignError as exc:
+            print(f"Campaign finalization failed: {exc}")
+            return 1
+        print(json_dumps({"manifest": manifest.model_dump(mode="json"), "path": str(path)}))
         return 0
     return 0
 

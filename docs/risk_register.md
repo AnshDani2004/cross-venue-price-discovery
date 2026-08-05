@@ -75,3 +75,15 @@ Low, Medium, or High.
 | R-DATA-031 | Data | Source evidence mutates during replay. | Low | High | Verify source hashes before and after replay before finalizing. | Open | 3A+ | Data |
 | R-DATA-032 | Data | DuckDB type coercion changes analytical interpretation. | Medium | Medium | Build views over explicit-schema Parquet and validate row counts/types. | Open | 3A+ | Engineering |
 | R-DATA-033 | Data | Mixed normalization versions enter one analysis. | Medium | High | Require normalized dataset ID and semantic hash in later research records. | Open | 3A+ | Research |
+| R-DATA-034 | Data | Manually cherry-picking accepted sessions biases later research. | High | Medium | Preserve all attempts and include accepted sessions automatically by quality rules. | Open | 3B+ | Research |
+| R-DATA-035 | Operations | Missed collection windows reduce date or bucket coverage. | Medium | Medium | Record missed slots explicitly and use reserve slots only when requirements remain unmet. | Open | 3B+ | Data |
+| R-DATA-036 | Engineering | Campaign runtime commit drift makes attempts non-comparable. | High | Low | Freeze runtime commit at initialization and reject mismatched slot runs. | Open | 3B+ | Engineering |
+| R-DATA-037 | Data | Quality policy drift changes acceptance semantics mid-campaign. | High | Low | Hash the policy in the registry and validate it before campaign operations. | Open | 3B+ | Data |
+| R-DATA-038 | Data | Hidden failed attempts create survivorship bias. | High | Low | Append every transition to a hash-chained ledger and rebuild registry from it. | Open | 3B+ | Research |
+| R-DATA-039 | Engineering | Registry corruption misstates completion. | Medium | Low | Treat registry as derived state and validate it against the ledger. | Open | 3B+ | Engineering |
+| R-DATA-040 | Engineering | Ledger mutation erases or reorders evidence. | Medium | Low | Canonical event hashes chain every append-only ledger entry. | Open | 3B+ | Engineering |
+| R-DATA-041 | Research | Partial campaign completion is mistaken for research readiness. | Medium | Medium | Finalization is blocked until all completion requirements pass. | Open | 3B+ | Research |
+| R-DATA-042 | Data | Calendar-date or time-bucket imbalance limits representativeness. | Medium | Medium | Require at least three dates and three buckets before completion. | Open | 3B+ | Data |
+| R-DATA-043 | Data | Duplicate session inclusion overweights one collection. | Medium | Low | Campaign manifest and normalization reject duplicate sessions and pairs. | Open | 3B+ | Data |
+| R-DATA-044 | Data | Multi-session schema incompatibility corrupts analysis tables. | Medium | Medium | Normalize through explicit schema and validate deterministic replay. | Open | 3B+ | Data |
+| R-DATA-045 | Operations | Long slots exhaust message caps before duration. | Medium | Medium | Enforce positive message caps and record incomplete attempts explicitly. | Open | 3B+ | Data |

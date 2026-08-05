@@ -98,6 +98,17 @@
 - Physical Parquet checksums may depend on library versions outside the supported local
   environment; semantic hashes are the cross-run logical guarantee.
 
+## Phase 3B
+
+- The campaign is planned across specific collection windows; missed windows may require
+  reserve slots.
+- Three time buckets do not represent all market regimes.
+- Five accepted hours remains a limited research sample.
+- Sequential collection days do not establish long-horizon stability.
+- Accepted campaign data does not imply a predictive relationship.
+- Phase 3B performs no lead-lag analysis, modeling, backtesting, PnL, strategy logic,
+  execution simulation, authenticated API use, or trading.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.

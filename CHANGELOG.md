@@ -28,3 +28,7 @@
 - Add Phase 3A deterministic normalization with validated-manifest replay, exact-decimal
   trade and top-of-book Parquet outputs, raw-record outcome tables, semantic hashes,
   reconciliation, validation, DuckDB views, and determinism checks.
+- Add Phase 3B campaign infrastructure with a fixed multi-day Coinbase/Kraken BTC-USD
+  schedule, hash-chained attempt ledger, derived registry, slot-time enforcement,
+  campaign locking, missed-slot recording, validated campaign manifests, multi-session
+  normalization lineage, and opt-in smoke markers.

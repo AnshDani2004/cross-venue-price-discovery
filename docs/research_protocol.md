@@ -9,6 +9,14 @@ After Phase 3A, research must begin from a normalization manifest, not directly 
 session directories. Every later result must record the normalized dataset ID and
 semantic dataset hash. Phase 3A itself produces no price-discovery conclusion.
 
+After Phase 3B, Phase 3C research must begin from the finalized validated campaign
+manifest and its campaign-level normalization manifest. All campaign attempts remain
+registered, and inclusion is determined by predeclared quality rules before research.
+Accepted sessions cannot be manually excluded because their market behavior is
+inconvenient. Development smoke sessions are engineering evidence only and cannot be
+used for research conclusions. No price-discovery conclusion may be generated while the
+campaign remains incomplete.
+
 Review date: 2026-07-31.
 
 This protocol pre-registers the first empirical questions for later phases. It is not a
