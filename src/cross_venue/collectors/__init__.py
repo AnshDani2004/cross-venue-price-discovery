@@ -22,6 +22,7 @@ from cross_venue.collectors.retry import RetryPolicy
 from cross_venue.collectors.runtime import (
     CollectorRunSummary,
     CollectorRuntimeSpec,
+    CollectorStopReason,
     RunLimits,
     SessionStatistics,
     SubscriptionState,
@@ -37,6 +38,7 @@ __all__ = [
     "CollectorRunSummary",
     "CollectorRuntimeSpec",
     "CollectorState",
+    "CollectorStopReason",
     "ExchangeErrorMessage",
     "HeartbeatSupervisor",
     "InMemoryEventSink",

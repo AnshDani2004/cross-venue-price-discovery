@@ -413,6 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
             "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION",
             "LONG_DURATION_PREFLIGHT_FIX",
             "CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX",
+            "COLLECTOR_INTERNAL_MESSAGE_LIMIT_FIX",
         ),
         required=True,
     )
@@ -432,6 +433,8 @@ def main(
     args = parser.parse_args(argv)
     if args.command == "smoke-collect":
         try:
+            if args.duration_seconds > 120.0:
+                raise ValueError("duration exceeds Phase 2B maximum")
             limits = RunLimits(
                 duration_seconds=args.duration_seconds,
                 max_messages=args.max_messages,
@@ -444,6 +447,8 @@ def main(
         return 0 if summary.completed_successfully else 1
     if args.command == "smoke-archive":
         try:
+            if args.duration_seconds > 30.0:
+                raise ValueError("duration exceeds Phase 2B maximum")
             limits = RunLimits(
                 duration_seconds=args.duration_seconds,
                 max_messages=args.max_messages,

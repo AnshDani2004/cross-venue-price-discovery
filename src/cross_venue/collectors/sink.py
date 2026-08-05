@@ -41,6 +41,18 @@ type SinkItem = (
 )
 
 
+class EventSink(Protocol):
+    """Collector diagnostic sink contract."""
+
+    async def append(
+        self,
+        item: SinkItem,
+        *,
+        sleeper: AsyncSleeper = default_async_sleep,
+    ) -> None:
+        """Append, drop, or otherwise handle one diagnostic sink item."""
+
+
 @dataclass(slots=True)
 class InMemoryEventSink:
     """Bounded FIFO sink with explicit backpressure."""
@@ -85,3 +97,18 @@ class InMemoryEventSink:
         drained = tuple(self._items)
         self._items.clear()
         return drained
+
+
+@dataclass(frozen=True, slots=True)
+class DiscardingEventSink:
+    """Production sink that keeps no diagnostic payloads in memory."""
+
+    async def append(
+        self,
+        item: SinkItem,
+        *,
+        sleeper: AsyncSleeper = default_async_sleep,
+    ) -> None:
+        """Accept and discard an item without in-memory backpressure."""
+
+        _ = (item, sleeper)

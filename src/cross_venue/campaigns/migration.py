@@ -89,10 +89,14 @@ def migrate_campaign_runtime(
     if (
         excluded_attempt_ids
         and not zero_data_failed_attempt_ids
-        and reason != RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX
+        and reason
+        not in {
+            RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX,
+            RuntimeMigrationReason.COLLECTOR_INTERNAL_MESSAGE_LIMIT_FIX,
+        }
     ):
         raise CampaignRuntimeCommitError(
-            "excluded attempt migration requires CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"
+            "excluded attempt migration requires a corrective excluded-attempt reason"
         )
     if not registry.attempts and _campaign_attempt_archives_exist(config):
         raise CampaignRuntimeCommitError("runtime migration is blocked when attempt archives exist")
@@ -119,6 +123,10 @@ def migrate_campaign_runtime(
         "excluded_attempt_ids": excluded_attempt_ids,
         "attempt_statuses": {
             attempt_id: registry.attempts[attempt_id].attempt_status.value
+            for attempt_id in excluded_attempt_ids
+        },
+        "attempt_inclusion_states": {
+            attempt_id: registry.attempts[attempt_id].inclusion_status.value
             for attempt_id in excluded_attempt_ids
         },
         "attempt_source_hashes": {

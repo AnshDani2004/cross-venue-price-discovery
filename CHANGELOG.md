@@ -42,3 +42,6 @@
 - Fix Phase 3B campaign message-limit propagation, record future attempt runtime and
   message-limit diagnostics, distinguish insufficient-overlap rejections, and add a
   controlled runtime migration path after excluded failed/rejected attempts.
+- Remove the remaining collector-internal archival sink cap, add typed collector stop
+  reasons and effective per-venue run-limit diagnostics, and cover campaign limits
+  through real collector stop predicates.

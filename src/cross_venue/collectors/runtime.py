@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -17,7 +18,7 @@ from cross_venue.collectors.manifest import make_session_id
 from cross_venue.collectors.retry import RetryPolicy
 from cross_venue.collectors.sink import (
     AsyncSleeper,
-    InMemoryEventSink,
+    EventSink,
     SinkBackpressureError,
     default_async_sleep,
 )
@@ -77,6 +78,18 @@ class TerminalCollectorRuntimeError(CollectorRuntimeError):
     """Failure that must stop the collector run."""
 
 
+class CollectorStopReason(StrEnum):
+    """Bounded reason a collector stopped."""
+
+    REQUESTED_DURATION_REACHED = "REQUESTED_DURATION_REACHED"
+    MESSAGE_LIMIT_REACHED = "MESSAGE_LIMIT_REACHED"
+    PHASE_DURATION_LIMIT_REACHED = "PHASE_DURATION_LIMIT_REACHED"
+    REMOTE_DISCONNECT = "REMOTE_DISCONNECT"
+    LOCAL_ERROR = "LOCAL_ERROR"
+    CANCELLED = "CANCELLED"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class RunLimits:
     """Bounded run limits for Phase 2B collectors."""
@@ -93,10 +106,10 @@ class RunLimits:
     def __post_init__(self) -> None:
         if self.duration_seconds <= 0:
             raise ValueError("duration must be positive")
-        if self.duration_seconds > self.max_phase_duration_seconds:
-            raise ValueError("duration exceeds Phase 2B maximum")
         if self.max_messages <= 0:
             raise ValueError("message limit must be positive")
+        if self.max_phase_duration_seconds <= 0:
+            raise ValueError("phase duration limit must be positive")
         if self.open_timeout_seconds <= 0:
             raise ValueError("open timeout must be positive")
         if self.receive_timeout_seconds <= 0:
@@ -226,9 +239,12 @@ class CollectorRunSummary:
 
     stats: SessionStatistics
     subscription_acknowledged: bool
-    stop_reason: str
+    stop_reason: CollectorStopReason | str
     archive_summary: ArchiveSummary | None = None
     data_persisted: bool = False
+    effective_duration_limit_seconds: float | None = None
+    effective_message_limit: int | None = None
+    effective_phase_duration_limit_seconds: float | None = None
 
     @property
     def completed_successfully(self) -> bool:
@@ -268,6 +284,12 @@ class CollectorRunSummary:
                 ),
                 f"Final state: {self.stats.final_state.value}",
                 f"Stop reason: {self.stop_reason}",
+                f"Effective duration limit seconds: {self.effective_duration_limit_seconds}",
+                f"Effective message limit: {self.effective_message_limit}",
+                (
+                    "Effective phase duration limit seconds: "
+                    f"{self.effective_phase_duration_limit_seconds}"
+                ),
             ]
         )
 
@@ -282,7 +304,7 @@ async def run_collector(
     spec: CollectorRuntimeSpec,
     *,
     connector: WebSocketConnector,
-    sink: InMemoryEventSink,
+    sink: EventSink,
     limits: RunLimits,
     now: UtcNow = utc_now,
     monotonic: MonotonicClock | None = None,
@@ -312,7 +334,7 @@ async def run_collector(
     )
     lifecycle = CollectorLifecycle()
     subscription_state = SubscriptionState(spec.expected_acknowledgements)
-    stop_reason = "not started"
+    stop_reason: CollectorStopReason | str = CollectorStopReason.UNKNOWN
     archive_summary: ArchiveSummary | None = None
     if archive_writer is not None:
         await archive_writer.start(
@@ -330,10 +352,13 @@ async def run_collector(
     run_started_mono = monotonic_clock()
     while True:
         if stop_event is not None and stop_event.is_set():
-            stop_reason = "external stop requested"
+            stop_reason = CollectorStopReason.CANCELLED
             break
         if monotonic_clock() - run_started_mono >= limits.duration_seconds:
-            stop_reason = "duration reached"
+            stop_reason = CollectorStopReason.REQUESTED_DURATION_REACHED
+            break
+        if monotonic_clock() - run_started_mono >= limits.max_phase_duration_seconds:
+            stop_reason = CollectorStopReason.PHASE_DURATION_LIMIT_REACHED
             break
         if lifecycle.state == CollectorState.CREATED:
             lifecycle = lifecycle.transition_to(CollectorState.STARTING)
@@ -359,23 +384,23 @@ async def run_collector(
             if attempt > spec.retry_policy.max_attempts:
                 stats.failure_reason = f"retry budget exhausted: {exc}"
                 lifecycle = _fail_lifecycle(lifecycle)
-                stop_reason = "retry budget exhausted"
+                stop_reason = CollectorStopReason.REMOTE_DISCONNECT
                 break
             stats.reconnect_attempts += 1
             delay = spec.retry_policy.delay_for_attempt(attempt, jitter_source=jitter_source)
             stopped = await _sleep_or_stop(delay, sleeper=sleeper, stop_event=stop_event)
             if stopped:
-                stop_reason = "external stop requested during backoff"
+                stop_reason = CollectorStopReason.CANCELLED
                 break
         except TerminalCollectorRuntimeError as exc:
             stats.failure_reason = str(exc)
             lifecycle = _fail_lifecycle(lifecycle)
-            stop_reason = "terminal failure"
+            stop_reason = CollectorStopReason.LOCAL_ERROR
             break
         except StorageError as exc:
             stats.failure_reason = str(exc)
             lifecycle = _fail_lifecycle(lifecycle)
-            stop_reason = "storage failure"
+            stop_reason = CollectorStopReason.LOCAL_ERROR
             break
 
     if stats.failure_reason is None:
@@ -405,13 +430,16 @@ async def run_collector(
         except ArchiveWriterError as exc:
             stats.failure_reason = str(exc)
             stats.final_state = CollectorState.FAILED
-            stop_reason = "archive close failure"
+            stop_reason = CollectorStopReason.LOCAL_ERROR
     return CollectorRunSummary(
         stats=stats,
         subscription_acknowledged=subscription_state.acknowledged_all,
         stop_reason=stop_reason,
         archive_summary=archive_summary,
         data_persisted=archive_writer is not None,
+        effective_duration_limit_seconds=limits.duration_seconds,
+        effective_message_limit=limits.max_messages,
+        effective_phase_duration_limit_seconds=limits.max_phase_duration_seconds,
     )
 
 
@@ -419,7 +447,7 @@ async def _run_connection_attempt(
     spec: CollectorRuntimeSpec,
     *,
     connector: WebSocketConnector,
-    sink: InMemoryEventSink,
+    sink: EventSink,
     limits: RunLimits,
     stats: SessionStatistics,
     lifecycle: CollectorLifecycle,
@@ -451,11 +479,13 @@ async def _run_connection_attempt(
         )
         while True:
             if stop_event is not None and stop_event.is_set():
-                return "external stop requested"
+                return CollectorStopReason.CANCELLED
             if monotonic() - run_started_mono >= limits.duration_seconds:
-                return "duration reached"
+                return CollectorStopReason.REQUESTED_DURATION_REACHED
+            if monotonic() - run_started_mono >= limits.max_phase_duration_seconds:
+                return CollectorStopReason.PHASE_DURATION_LIMIT_REACHED
             if stats.frames_received >= limits.max_messages:
-                return "message limit reached"
+                return CollectorStopReason.MESSAGE_LIMIT_REACHED
             if not subscription_state.acknowledged_all and monotonic() > ack_deadline:
                 raise RetryableCollectorRuntimeError("subscription acknowledgement timeout")
             try:
@@ -505,7 +535,7 @@ async def _handle_frame(
     frame: str | bytes,
     *,
     spec: CollectorRuntimeSpec,
-    sink: InMemoryEventSink,
+    sink: EventSink,
     stats: SessionStatistics,
     subscription_state: SubscriptionState,
     local_receipt_ts: datetime,
