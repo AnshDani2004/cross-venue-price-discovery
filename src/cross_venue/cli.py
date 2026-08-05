@@ -1097,3 +1097,7 @@ def json_dumps(payload: object) -> str:
     """Return deterministic pretty JSON for CLI diagnostics."""
 
     return json.dumps(payload, indent=2, sort_keys=True, default=str)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
