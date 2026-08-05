@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from cross_venue.campaigns.completion import recalculate_registry
+from cross_venue.campaigns.config import stored_config_path
 from cross_venue.campaigns.exceptions import CampaignRegistryError, CampaignValidationError
 from cross_venue.campaigns.ledger import (
     append_event,
@@ -18,7 +19,6 @@ from cross_venue.campaigns.ledger import (
     rebuild_registry_from_ledger,
 )
 from cross_venue.campaigns.models import (
-    CAMPAIGN_SCHEMA_VERSION,
     AttemptSummary,
     CampaignConfig,
     CampaignRegistry,
@@ -51,6 +51,14 @@ def initialize_campaign(config: CampaignConfig, *, config_path: Path) -> Campaig
 
     if config.require_clean_working_tree and not working_tree_clean():
         raise CampaignRegistryError("campaign initialization requires a clean working tree")
+    current_commit = current_git_commit()
+    runtime_commit = config.runtime_git_commit or current_commit
+    if (
+        config.require_frozen_runtime_commit
+        and config.runtime_git_commit
+        and current_commit != config.runtime_git_commit
+    ):
+        raise CampaignRegistryError("current commit does not match configured runtime commit")
     rpath = registry_path(config)
     lpath = ledger_path(config)
     config_sha = sha256_file(config_path)
@@ -70,14 +78,15 @@ def initialize_campaign(config: CampaignConfig, *, config_path: Path) -> Campaig
         for slot in config.slots
     }
     registry = CampaignRegistry(
-        campaign_schema_version=CAMPAIGN_SCHEMA_VERSION,
+        campaign_schema_version=config.campaign_schema_version,
         campaign_id=config.campaign_id,
+        campaign_role=config.campaign_role,
         campaign_status=CampaignStatus.IN_PROGRESS,
-        campaign_config_path=config_path.as_posix(),
+        campaign_config_path=stored_config_path(config_path),
         campaign_config_sha256=config_sha,
         quality_policy_version=config.quality_policy_version,
         quality_policy_sha256=quality_sha,
-        runtime_git_commit=current_git_commit(),
+        runtime_git_commit=runtime_commit,
         runtime_working_tree_clean=working_tree_clean(),
         created_at=now,
         updated_at=now,
@@ -288,6 +297,7 @@ def campaign_status_payload(config: CampaignConfig, registry: CampaignRegistry) 
         )
     return {
         "campaign_id": registry.campaign_id,
+        "campaign_role": registry.campaign_role.value,
         "campaign_status": registry.campaign_status.value,
         "runtime_git_commit": registry.runtime_git_commit,
         "current_utc_time": now.isoformat(),
@@ -319,6 +329,7 @@ def status_markdown(status: dict[str, Any]) -> str:
     lines = [
         f"# Campaign Status: {status['campaign_id']}",
         "",
+        f"- Role: {status['campaign_role']}",
         f"- Status: {status['campaign_status']}",
         f"- Runtime commit: `{status['runtime_git_commit']}`",
         f"- Current UTC time: `{status['current_utc_time']}`",

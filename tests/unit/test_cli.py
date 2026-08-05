@@ -55,6 +55,19 @@ def test_cli_has_no_live_trading_command_surface() -> None:
     assert all(term not in help_text for term in forbidden_terms)
 
 
+def test_campaign_cli_help_is_generic() -> None:
+    result = run_cli("init-collection-campaign", "--help")
+
+    assert result.returncode == 0
+    assert "--campaign-config" in result.stdout
+    assert "fixed Phase 3B" not in result.stdout
+
+    result = run_cli("migrate-campaign-runtime", "--help")
+    assert result.returncode == 0
+    assert "--to-current-commit" in result.stdout
+    assert "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION" in result.stdout
+
+
 async def _successful_smoke_runner(_venue: str, _limits: RunLimits) -> CollectorRunSummary:
     stats = SessionStatistics(
         venue=Exchange.COINBASE,
