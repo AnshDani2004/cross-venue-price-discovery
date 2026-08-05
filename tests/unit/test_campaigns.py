@@ -23,6 +23,7 @@ from cross_venue.campaigns.models import (
     AttemptSummary,
     CampaignConfig,
     CampaignRole,
+    FailureClassification,
     LedgerEventType,
     MissedReason,
     RuntimeMigrationReason,
@@ -302,7 +303,7 @@ def test_runtime_migration_allowed_after_missed_slot_before_attempt(
     assert report["new_runtime_commit"] == "1" * 40
     events = read_ledger(ledger_path(config))
     assert events[-1].event_type == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED
-    with pytest.raises(Exception, match="already been migrated"):
+    with pytest.raises(Exception, match="target matches existing runtime"):
         migrate_campaign_runtime(
             config,
             reason=RuntimeMigrationReason.GENERIC_ENGINE_BEFORE_FIRST_COLLECTION,
@@ -325,10 +326,71 @@ def test_runtime_migration_blocked_after_attempt_started(
         attempt=_started_attempt(config),
     )
 
-    with pytest.raises(Exception, match="after an attempt starts"):
+    with pytest.raises(Exception, match="collected attempt evidence"):
         migrate_campaign_runtime(
             config,
             reason=RuntimeMigrationReason.GENERIC_ENGINE_BEFORE_FIRST_COLLECTION,
+        )
+
+
+def test_runtime_migration_allowed_after_zero_data_failed_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "2" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    started = _started_attempt(config)
+    failed = _zero_data_failed_attempt(config)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=started)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_FAILED, attempt=failed)
+
+    report = migrate_campaign_runtime(
+        config,
+        reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,
+    )
+
+    assert report["old_runtime_commit"] == "0" * 40
+    assert report["new_runtime_commit"] == "2" * 40
+    assert (
+        report["migration_event_type"]
+        == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE.value
+    )
+    events = read_ledger(ledger_path(config))
+    assert events[-2].event_type == LedgerEventType.ATTEMPT_FAILED
+    assert (
+        events[-1].event_type == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE
+    )
+
+
+def test_runtime_migration_blocked_after_collected_failed_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "2" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    record_attempt_event(
+        config,
+        event_type=LedgerEventType.ATTEMPT_STARTED,
+        attempt=_started_attempt(config),
+    )
+    record_attempt_event(
+        config,
+        event_type=LedgerEventType.ATTEMPT_FAILED,
+        attempt=_zero_data_failed_attempt(config).model_copy(update={"coinbase_frame_count": 1}),
+    )
+
+    with pytest.raises(Exception, match="collected attempt evidence"):
+        migrate_campaign_runtime(
+            config,
+            reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,
         )
 
 
@@ -478,6 +540,19 @@ def _started_attempt(config: CampaignConfig) -> AttemptSummary:
         requested_duration_seconds=config.requested_duration_seconds,
         attempt_status=AttemptStatus.STARTED,
         exclusion_reason="attempt not complete",
+    )
+
+
+def _zero_data_failed_attempt(config: CampaignConfig) -> AttemptSummary:
+    started = _started_attempt(config)
+    return started.model_copy(
+        update={
+            "actual_completed_at": started.actual_started_at,
+            "attempt_status": AttemptStatus.FAILED,
+            "failure_classification": FailureClassification.UNKNOWN_FAILURE,
+            "failure_message": "duration exceeds Phase 2D maximum",
+            "exclusion_reason": "attempt failed",
+        }
     )
 
 

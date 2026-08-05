@@ -28,7 +28,7 @@ from cross_venue.campaigns.registry import (
 from cross_venue.campaigns.schedule import require_slot_executable
 from cross_venue.config import DataQualityConfig, StorageConfig
 from cross_venue.quality.collection import PairedCollectionResult, collect_paired_quality
-from cross_venue.quality.exceptions import PromotionError
+from cross_venue.quality.exceptions import CollectionPreflightError, PromotionError
 from cross_venue.quality.io import current_git_commit, model_sha256, portable_relative_path
 from cross_venue.quality.models import QualityDisposition
 from cross_venue.quality.promotion import promote_dataset
@@ -92,6 +92,16 @@ async def run_campaign_slot(
             )
         except CampaignSlotNotDueError:
             raise
+        except CollectionPreflightError as exc:
+            final = started_attempt.model_copy(
+                update={
+                    "actual_completed_at": datetime.now(UTC),
+                    "attempt_status": AttemptStatus.FAILED,
+                    "failure_classification": FailureClassification.COLLECTION_PREFLIGHT_FAILURE,
+                    "failure_message": str(exc)[:500],
+                    "exclusion_reason": "collection preflight failed",
+                }
+            )
         except Exception as exc:
             final = started_attempt.model_copy(
                 update={

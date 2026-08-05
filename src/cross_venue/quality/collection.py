@@ -12,9 +12,15 @@ from cross_venue.collectors.kraken.collector import load_kraken_live_collector
 from cross_venue.collectors.runtime import CollectorRunSummary, RunLimits
 from cross_venue.config import DataQualityConfig, StorageConfig
 from cross_venue.quality.analyzer import analyze_session_quality
+from cross_venue.quality.exceptions import CollectionPreflightError
 from cross_venue.quality.io import current_git_commit, persist_model_json, portable_relative_path
 from cross_venue.quality.models import PairedQualityReport, SessionQualityReport
 from cross_venue.quality.overlap import build_paired_quality_report
+from cross_venue.runtime_limits import (
+    MAX_PAIRED_COLLECTION_DURATION_SECONDS,
+    validate_paired_collection_duration,
+    validate_paired_collection_message_limit,
+)
 from cross_venue.storage.archive_writer import RotatingRawArchiveWriter
 from cross_venue.storage.manifest_store import persist_manifest
 from cross_venue.storage.quality_store import persist_quality_summary
@@ -74,17 +80,25 @@ async def collect_paired_quality(
 ) -> PairedCollectionResult:
     """Run one bounded concurrent Coinbase/Kraken archival collection and analyze it."""
 
-    requested_duration = duration_seconds or quality_config.default_controlled_duration_seconds
-    if requested_duration > quality_config.max_controlled_duration_seconds:
-        raise ValueError("duration exceeds Phase 2D maximum")
+    requested_duration = (
+        quality_config.default_controlled_duration_seconds
+        if duration_seconds is None
+        else duration_seconds
+    )
+    try:
+        requested_duration = validate_paired_collection_duration(requested_duration)
+    except ValueError as exc:
+        raise CollectionPreflightError(str(exc)) from exc
     message_limit = max_messages_per_venue or quality_config.max_messages_per_venue
-    if message_limit > quality_config.max_messages_per_venue:
-        raise ValueError("message limit exceeds Phase 2D maximum")
+    try:
+        message_limit = validate_paired_collection_message_limit(message_limit)
+    except ValueError as exc:
+        raise CollectionPreflightError(str(exc)) from exc
     pair_id = paired_collection_id or f"paired-{uuid4()}"
     limits = RunLimits(
         duration_seconds=requested_duration,
         max_messages=message_limit,
-        max_phase_duration_seconds=quality_config.max_controlled_duration_seconds,
+        max_phase_duration_seconds=MAX_PAIRED_COLLECTION_DURATION_SECONDS,
     )
     coinbase_writer = RotatingRawArchiveWriter(storage_config=storage_config)
     kraken_writer = RotatingRawArchiveWriter(storage_config=storage_config)

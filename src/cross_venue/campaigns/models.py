@@ -10,6 +10,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
+from cross_venue.runtime_limits import (
+    MAX_PAIRED_COLLECTION_DURATION_SECONDS,
+    MAX_PAIRED_COLLECTION_MESSAGES_PER_VENUE,
+)
 from cross_venue.schemas import Exchange
 
 CAMPAIGN_SCHEMA_VERSION = "3b.2"
@@ -94,6 +98,7 @@ class RuntimeMigrationReason(StrEnum):
     """Allowed reasons for changing a campaign runtime before collection starts."""
 
     GENERIC_ENGINE_BEFORE_FIRST_COLLECTION = "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION"
+    LONG_DURATION_PREFLIGHT_FIX = "LONG_DURATION_PREFLIGHT_FIX"
 
 
 class FailureClassification(StrEnum):
@@ -109,6 +114,7 @@ class FailureClassification(StrEnum):
     PROMOTION_FAILURE = "PROMOTION_FAILURE"
     PROCESS_INTERRUPTED = "PROCESS_INTERRUPTED"
     RUNTIME_COMMIT_MISMATCH = "RUNTIME_COMMIT_MISMATCH"
+    COLLECTION_PREFLIGHT_FAILURE = "COLLECTION_PREFLIGHT_FAILURE"
     OUTSIDE_SLOT_WINDOW = "OUTSIDE_SLOT_WINDOW"
     UNKNOWN_FAILURE = "UNKNOWN_FAILURE"
 
@@ -157,6 +163,9 @@ class LedgerEventType(StrEnum):
     ATTEMPT_FAILED = "ATTEMPT_FAILED"
     ATTEMPT_ABORTED = "ATTEMPT_ABORTED"
     CAMPAIGN_RUNTIME_MIGRATED = "CAMPAIGN_RUNTIME_MIGRATED"
+    CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE = (
+        "CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE"
+    )
     CAMPAIGN_COMPLETION_EVALUATED = "CAMPAIGN_COMPLETION_EVALUATED"
     CAMPAIGN_FINALIZED = "CAMPAIGN_FINALIZED"
 
@@ -205,7 +214,10 @@ class CampaignConfig(BaseModel):
     quality_policy_version: Literal["2d.2"]
     normalization_schema_version: str = Field(min_length=1)
     runtime_git_commit: str | None = Field(default=None, min_length=7, max_length=64)
-    requested_duration_seconds: int = Field(gt=0, le=7200)
+    requested_duration_seconds: int = Field(
+        gt=0,
+        le=MAX_PAIRED_COLLECTION_DURATION_SECONDS,
+    )
     minimum_overlap_seconds_per_accepted_session: int = Field(gt=0)
     minimum_accepted_sessions: int = Field(gt=0)
     minimum_total_accepted_overlap_seconds: int = Field(gt=0)
@@ -214,7 +226,10 @@ class CampaignConfig(BaseModel):
     maximum_attempts: int = Field(gt=0)
     early_start_tolerance_seconds: int = Field(ge=0, le=1800)
     late_start_tolerance_seconds: int = Field(ge=0, le=3600)
-    maximum_messages_per_venue: int = Field(gt=0)
+    maximum_messages_per_venue: int = Field(
+        gt=0,
+        le=MAX_PAIRED_COLLECTION_MESSAGES_PER_VENUE,
+    )
     registry_root: Path
     validated_manifest_root: Path
     normalized_output_root: Path

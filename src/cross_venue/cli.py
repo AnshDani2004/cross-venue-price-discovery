@@ -409,7 +409,10 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("--to-current-commit", action="store_true")
     migrate.add_argument(
         "--reason",
-        choices=("GENERIC_ENGINE_BEFORE_FIRST_COLLECTION",),
+        choices=(
+            "GENERIC_ENGINE_BEFORE_FIRST_COLLECTION",
+            "LONG_DURATION_PREFLIGHT_FIX",
+        ),
         required=True,
     )
     return parser
