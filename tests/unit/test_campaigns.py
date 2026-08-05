@@ -24,6 +24,7 @@ from cross_venue.campaigns.models import (
     CampaignConfig,
     CampaignRole,
     FailureClassification,
+    InclusionStatus,
     LedgerEventType,
     MissedReason,
     RuntimeMigrationReason,
@@ -38,6 +39,7 @@ from cross_venue.campaigns.registry import (
     record_attempt_event,
 )
 from cross_venue.campaigns.schedule import evaluate_slot_window
+from cross_venue.campaigns.validation import validate_campaign
 from cross_venue.config import NormalizationConfig
 from cross_venue.normalization.catalog import build_normalized_catalog
 from cross_venue.normalization.determinism import verify_normalization_determinism
@@ -387,11 +389,142 @@ def test_runtime_migration_blocked_after_collected_failed_attempt(
         attempt=_zero_data_failed_attempt(config).model_copy(update={"coinbase_frame_count": 1}),
     )
 
-    with pytest.raises(Exception, match="collected attempt evidence"):
+    with pytest.raises(Exception, match="CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"):
         migrate_campaign_runtime(
             config,
             reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,
         )
+
+
+def test_runtime_migration_allowed_after_excluded_attempts_for_message_limit_fix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "3" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    started = _started_attempt(config)
+    rejected = _excluded_rejected_attempt(config)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=started)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_REJECTED, attempt=rejected)
+
+    report = migrate_campaign_runtime(
+        config,
+        reason=RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX,
+    )
+
+    assert report["old_runtime_commit"] == "0" * 40
+    assert report["new_runtime_commit"] == "3" * 40
+    assert (
+        report["migration_event_type"]
+        == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS.value
+    )
+    events = read_ledger(ledger_path(config))
+    assert (
+        events[-1].event_type == LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS
+    )
+    assert events[-1].payload["migration_reason"] == (
+        RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX.value
+    )
+    assert events[-1].payload["excluded_attempt_ids"] == [rejected.campaign_attempt_id]
+    assert events[-1].payload["no_accepted_dataset_membership"] is True
+    assert events[-1].payload["attempt_source_hashes"][rejected.campaign_attempt_id] == {
+        "source_session_manifest_hashes": rejected.source_session_manifest_hashes,
+        "source_raw_shard_checksums": rejected.source_raw_shard_checksums,
+        "session_quality_report_hashes": rejected.session_quality_report_hashes,
+        "paired_quality_report_hash": rejected.paired_quality_report_hash,
+        "validated_pair_manifest_sha256": None,
+    }
+
+
+def test_runtime_migration_blocked_after_excluded_attempt_with_wrong_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "3" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    started = _started_attempt(config)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=started)
+    record_attempt_event(
+        config,
+        event_type=LedgerEventType.ATTEMPT_REJECTED,
+        attempt=_excluded_rejected_attempt(config),
+    )
+
+    with pytest.raises(Exception, match="CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"):
+        migrate_campaign_runtime(
+            config,
+            reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX,
+        )
+
+
+def test_runtime_migration_blocked_after_included_or_manifest_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "3" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    started = _started_attempt(config)
+    included = _excluded_rejected_attempt(config).model_copy(
+        update={
+            "inclusion_status": InclusionStatus.INCLUDED,
+            "validated_pair_manifest_id": "validated-pair-test",
+            "validated_pair_manifest_path": "validated-pair-test.json",
+            "validated_pair_manifest_sha256": "a" * 64,
+        }
+    )
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=started)
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_REJECTED, attempt=included)
+
+    with pytest.raises(Exception, match="collected attempt evidence"):
+        migrate_campaign_runtime(
+            config,
+            reason=RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX,
+        )
+
+
+def test_attempt_runtime_lineage_validator_reconstructs_migrations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cross_venue.campaigns.registry.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.migration.working_tree_clean", lambda: True)
+    monkeypatch.setattr("cross_venue.campaigns.registry.current_git_commit", lambda: "0" * 40)
+    monkeypatch.setattr("cross_venue.campaigns.migration.current_git_commit", lambda: "3" * 40)
+    config = CampaignConfig.model_validate(_campaign_payload(tmp_path))
+    initialize_campaign(config, config_path=Path("configs/campaigns/phase_3b_btc_usd.toml"))
+    record_attempt_event(
+        config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=_started_attempt(config)
+    )
+    record_attempt_event(
+        config,
+        event_type=LedgerEventType.ATTEMPT_FAILED,
+        attempt=_zero_data_failed_attempt(config),
+    )
+    migrate_campaign_runtime(config, reason=RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX)
+    second = _started_attempt(config).model_copy(
+        update={
+            "slot_id": "P02",
+            "campaign_attempt_id": f"{config.campaign_id}-P02-001",
+            "attempt_runtime_git_commit": "3" * 40,
+        }
+    )
+    record_attempt_event(config, event_type=LedgerEventType.ATTEMPT_STARTED, attempt=second)
+
+    report = validate_campaign(config)
+
+    assert report["validation_status"] == "VALID"
 
 
 def test_campaign_lock_rejects_concurrent(tmp_path: Path) -> None:
@@ -552,6 +685,44 @@ def _zero_data_failed_attempt(config: CampaignConfig) -> AttemptSummary:
             "failure_classification": FailureClassification.UNKNOWN_FAILURE,
             "failure_message": "duration exceeds Phase 2D maximum",
             "exclusion_reason": "attempt failed",
+        }
+    )
+
+
+def _excluded_rejected_attempt(config: CampaignConfig) -> AttemptSummary:
+    started = _started_attempt(config)
+    return started.model_copy(
+        update={
+            "actual_completed_at": started.actual_started_at + timedelta(seconds=373),
+            "actual_collection_duration_seconds": 373.199853,
+            "paired_overlap_seconds": 289.97174,
+            "paired_collection_id": "paired-test",
+            "coinbase_session_id": "coinbase-test",
+            "kraken_session_id": "kraken-test",
+            "coinbase_frame_count": 5001,
+            "kraken_frame_count": 4879,
+            "coinbase_archive_valid": True,
+            "kraken_archive_valid": True,
+            "coinbase_disposition": "ACCEPTED",
+            "kraken_disposition": "ACCEPTED",
+            "paired_disposition": "ACCEPTED",
+            "promotion_dry_run_allowed": True,
+            "source_session_manifest_hashes": {
+                "coinbase-test": "b" * 64,
+                "kraken-test": "c" * 64,
+            },
+            "source_raw_shard_checksums": {
+                "coinbase-test": {"raw/part-00000.jsonl": "d" * 64},
+                "kraken-test": {"raw/part-00000.jsonl": "e" * 64},
+            },
+            "session_quality_report_hashes": {
+                "coinbase-test": "f" * 64,
+                "kraken-test": "1" * 64,
+            },
+            "paired_quality_report_hash": "2" * 64,
+            "attempt_status": AttemptStatus.REJECTED,
+            "inclusion_status": InclusionStatus.EXCLUDED,
+            "exclusion_reason": "quality disposition was not accepted",
         }
     )
 

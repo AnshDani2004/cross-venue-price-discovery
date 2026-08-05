@@ -68,21 +68,44 @@ def migrate_campaign_runtime(
         in {
             LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED,
             LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE,
+            LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS,
         }
     ):
         raise CampaignRuntimeCommitError("campaign runtime has already migrated to target commit")
 
     zero_data_failed_attempt_ids = _zero_data_failed_attempt_ids(config, registry.attempts)
-    if registry.attempts and not zero_data_failed_attempt_ids:
+    excluded_attempt_ids = _excluded_terminal_attempt_ids(registry.attempts)
+    if registry.attempts and not zero_data_failed_attempt_ids and not excluded_attempt_ids:
         raise CampaignRuntimeCommitError(
             "runtime migration is blocked by collected attempt evidence"
         )
-    if registry.attempts and reason != RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX:
+    if (
+        zero_data_failed_attempt_ids
+        and reason != RuntimeMigrationReason.LONG_DURATION_PREFLIGHT_FIX
+    ):
         raise CampaignRuntimeCommitError(
             "zero-data failed attempt migration requires LONG_DURATION_PREFLIGHT_FIX"
         )
+    if (
+        excluded_attempt_ids
+        and not zero_data_failed_attempt_ids
+        and reason != RuntimeMigrationReason.CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX
+    ):
+        raise CampaignRuntimeCommitError(
+            "excluded attempt migration requires CAMPAIGN_MESSAGE_LIMIT_PROPAGATION_FIX"
+        )
     if not registry.attempts and _campaign_attempt_archives_exist(config):
         raise CampaignRuntimeCommitError("runtime migration is blocked when attempt archives exist")
+    no_accepted_dataset_membership = all(
+        attempt.validated_pair_manifest_id is None
+        and attempt.validated_pair_manifest_path is None
+        and attempt.validated_pair_manifest_sha256 is None
+        for attempt in registry.attempts.values()
+    )
+    if not no_accepted_dataset_membership:
+        raise CampaignRuntimeCommitError(
+            "runtime migration is blocked by accepted dataset membership"
+        )
 
     payload = {
         "old_runtime_commit": old_runtime_commit,
@@ -93,15 +116,26 @@ def migrate_campaign_runtime(
         "quality_policy_sha256": registry.quality_policy_sha256,
         "no_collection_attempt_existed": not registry.attempts,
         "zero_data_failed_attempt_ids": zero_data_failed_attempt_ids,
-        "no_market_data_evidence_existed": True,
+        "excluded_attempt_ids": excluded_attempt_ids,
+        "attempt_statuses": {
+            attempt_id: registry.attempts[attempt_id].attempt_status.value
+            for attempt_id in excluded_attempt_ids
+        },
+        "attempt_source_hashes": {
+            attempt_id: _attempt_source_hashes(registry.attempts[attempt_id])
+            for attempt_id in excluded_attempt_ids
+        },
+        "no_accepted_dataset_membership": no_accepted_dataset_membership,
+        "no_market_data_evidence_existed": not excluded_attempt_ids,
         "generic_engine_schema_version": CAMPAIGN_SCHEMA_VERSION,
         "runtime_working_tree_clean": working_tree_clean(),
     }
-    event_type = (
-        LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE
-        if zero_data_failed_attempt_ids
-        else LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED
-    )
+    if zero_data_failed_attempt_ids:
+        event_type = LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE
+    elif excluded_attempt_ids:
+        event_type = LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS
+    else:
+        event_type = LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED
     lpath = ledger_path(config)
     event = make_event(
         path=lpath,
@@ -177,3 +211,38 @@ def _is_zero_data_failed_attempt(config: CampaignConfig, attempt: AttemptSummary
     if attempt.promotion_dry_run_allowed:
         return False
     return not attempt_root(config, attempt.slot_id, attempt.attempt_number).exists()
+
+
+def _excluded_terminal_attempt_ids(
+    attempts: dict[str, AttemptSummary],
+) -> tuple[str, ...]:
+    if not attempts:
+        return ()
+    allowed_statuses = {AttemptStatus.FAILED, AttemptStatus.REJECTED}
+    qualified: list[str] = []
+    for attempt in attempts.values():
+        if attempt.attempt_status not in allowed_statuses:
+            return ()
+        if attempt.inclusion_status.value != "EXCLUDED":
+            return ()
+        if attempt.validated_pair_manifest_id is not None:
+            return ()
+        if attempt.validated_pair_manifest_path is not None:
+            return ()
+        if attempt.validated_pair_manifest_sha256 is not None:
+            return ()
+        qualified.append(attempt.campaign_attempt_id)
+    return tuple(sorted(qualified))
+
+
+def _attempt_source_hashes(attempt: AttemptSummary) -> dict[str, Any]:
+    return {
+        "source_session_manifest_hashes": dict(attempt.source_session_manifest_hashes),
+        "source_raw_shard_checksums": {
+            session_id: dict(checksums)
+            for session_id, checksums in attempt.source_raw_shard_checksums.items()
+        },
+        "session_quality_report_hashes": dict(attempt.session_quality_report_hashes),
+        "paired_quality_report_hash": attempt.paired_quality_report_hash,
+        "validated_pair_manifest_sha256": attempt.validated_pair_manifest_sha256,
+    }

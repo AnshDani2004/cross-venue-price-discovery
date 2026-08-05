@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from cross_venue.campaigns.exceptions import CampaignValidationError
-from cross_venue.campaigns.ledger import ledger_sha256
-from cross_venue.campaigns.models import AttemptStatus, CampaignConfig, InclusionStatus
+from cross_venue.campaigns.ledger import ledger_sha256, read_ledger
+from cross_venue.campaigns.models import (
+    AttemptStatus,
+    CampaignConfig,
+    InclusionStatus,
+    LedgerEventType,
+)
 from cross_venue.campaigns.paths import ledger_path, reports_root
 from cross_venue.campaigns.registry import load_registry, validate_registry_and_ledger
 from cross_venue.storage.checksum import sha256_file
@@ -32,6 +37,7 @@ def validate_campaign(config: CampaignConfig) -> dict[str, Any]:
         errors.append("quality policy hash mismatch")
     if registry.ledger_sha256 != ledger_sha256(ledger_path(config)):
         errors.append("ledger sha mismatch")
+    errors.extend(_runtime_lineage_errors(config))
     if len(registry.attempts) > config.maximum_attempts:
         errors.append("maximum attempts exceeded")
     accepted = [
@@ -61,3 +67,38 @@ def validate_campaign(config: CampaignConfig) -> dict[str, Any]:
     if errors:
         raise CampaignValidationError("; ".join(errors))
     return report
+
+
+def _runtime_lineage_errors(config: CampaignConfig) -> list[str]:
+    errors: list[str] = []
+    try:
+        events = read_ledger(ledger_path(config))
+    except Exception as exc:
+        return [str(exc)]
+    if not events:
+        return ["campaign ledger missing initialization event"]
+    runtime = events[0].payload.get("registry", {}).get("runtime_git_commit")
+    if not runtime:
+        return ["campaign ledger initialization missing runtime commit"]
+    runtime_migration_events = {
+        LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED,
+        LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_ZERO_DATA_FAILURE,
+        LedgerEventType.CAMPAIGN_RUNTIME_MIGRATED_AFTER_EXCLUDED_ATTEMPTS,
+    }
+    for event in events[1:]:
+        if event.event_type == LedgerEventType.ATTEMPT_STARTED:
+            attempt_payload = event.payload.get("attempt", {})
+            attempt_runtime = attempt_payload.get("attempt_runtime_git_commit")
+            if attempt_runtime is not None and attempt_runtime != runtime:
+                errors.append(
+                    "attempt runtime mismatch at start: "
+                    f"{event.campaign_attempt_id} recorded {attempt_runtime}, "
+                    f"expected {runtime}"
+                )
+        elif event.event_type in runtime_migration_events:
+            new_runtime = event.payload.get("new_runtime_commit")
+            if not new_runtime:
+                errors.append(f"runtime migration missing new commit at event {event.event_index}")
+            else:
+                runtime = new_runtime
+    return errors

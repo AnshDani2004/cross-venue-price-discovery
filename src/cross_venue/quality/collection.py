@@ -89,7 +89,11 @@ async def collect_paired_quality(
         requested_duration = validate_paired_collection_duration(requested_duration)
     except ValueError as exc:
         raise CollectionPreflightError(str(exc)) from exc
-    message_limit = max_messages_per_venue or quality_config.max_messages_per_venue
+    message_limit = (
+        quality_config.max_messages_per_venue
+        if max_messages_per_venue is None
+        else max_messages_per_venue
+    )
     try:
         message_limit = validate_paired_collection_message_limit(message_limit)
     except ValueError as exc:

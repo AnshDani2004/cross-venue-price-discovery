@@ -128,6 +128,18 @@
 - Runtime migration after zero-data failure is limited to attempts with no collected
   market-data evidence.
 
+## Phase 3B.3
+
+- Phase 3B.3 fixes campaign message-limit propagation but does not retroactively accept
+  I02 or any historical excluded attempt.
+- I02 remains rejected because accepted quality reports alone do not satisfy the campaign
+  overlap requirement.
+- Runtime migration after excluded attempts is allowed only for terminal failed or
+  rejected attempts with no accepted dataset membership and unchanged config/policy
+  hashes.
+- A 100,000-message cap reduces premature stopping risk for 31-minute public slots, but
+  it is still a finite safety cap and can be hit in unusually high message-rate regimes.
+
 ## Known Research Risks
 
 - Exchange timestamps may have different semantics across venues.
