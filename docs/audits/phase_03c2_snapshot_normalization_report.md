@@ -68,7 +68,7 @@ Parquet or manifest files.
 
 Real output:
 
-`data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b73d535db939/`
+`data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07/`
 
 Key files:
 
@@ -85,9 +85,9 @@ Generated normalized data remains ignored by Git.
 
 ## Real Seven-Session Results
 
-- normalized dataset ID: `normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b73d535db939`
+- normalized dataset ID: `normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07`
 - normalized manifest ID: `normalized-snapshot-manifest-2196d1f5167a258c`
-- normalizer commit: `8dd3303212c0d59b00b76966c9a2b076c5aa1a70`
+- normalizer code commit: `e534e672c074fa12e0a19b85f9797adb535e97a1`
 - accepted attempts: 7
 - venue sessions: 14
 - trade rows: 99,566
@@ -95,7 +95,7 @@ Generated normalized data remains ignored by Git.
 - raw diagnostic/outcome rows: 348,744
 - session metadata rows: 14
 - attempt metadata rows: 7
-- output files: 54
+- output files: 52
 - output size: 77 MiB
 - semantic dataset hash: `4e7bb1002423f29b0ad3e9e6d83c72d47bac8b7f5f9cdad8f1656dddfc6e6e93`
 - final composite status: `FINAL_COMPOSITE_REQUIREMENTS_UNSATISFIED`
@@ -120,12 +120,12 @@ Diagnostics:
 
 Runtime:
 
-- initial normalization: 69.70 seconds wall time
-- maximum resident set size: 2,146,615,296 bytes
-- no-op rerun: 1.02 seconds wall time
-- no-op maximum resident set size: 610,893,824 bytes
-- determinism verifier: 150.32 seconds wall time
-- determinism maximum resident set size: 2,146,844,672 bytes
+- initial normalization: 85.05 seconds wall time
+- maximum resident set size: 2,101,657,600 bytes
+- no-op rerun: 1.17 seconds wall time
+- no-op maximum resident set size: 668,827,648 bytes
+- determinism verifier: 170.42 seconds wall time
+- determinism maximum resident set size: 2,153,693,184 bytes
 
 ## Validation Results
 
@@ -155,16 +155,16 @@ python -m cross_venue.cli normalize-analysis-snapshot \
   --source-collection-root /Users/ansh/Developer/cross-venue-price-discovery \
   --snapshot-root data/analysis/snapshots/analysis-snapshot-7-session-v1-5f796ab67a5c801c \
   --analysis-output-root data/analysis \
-  --expected-commit 8dd3303212c0d59b00b76966c9a2b076c5aa1a70
+  --expected-commit e534e672c074fa12e0a19b85f9797adb535e97a1
 
 python -m cross_venue.cli validate-normalized-dataset \
-  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b73d535db939/manifests/normalized_snapshot_manifest.json
+  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07/manifests/normalized_snapshot_manifest.json
 
 python -m cross_venue.cli build-normalized-catalog \
-  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b73d535db939/manifests/normalized_snapshot_manifest.json
+  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07/manifests/normalized_snapshot_manifest.json
 
 python -m cross_venue.cli analysis-normalization-status \
-  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b73d535db939/manifests/normalized_snapshot_manifest.json
+  --normalization-manifest data/analysis/normalized/dataset=normalized-analysis-snapshot-7-session-v1-5f796ab67a5c801c-b13bc5307c07/manifests/normalized_snapshot_manifest.json
 ```
 
 ## Limitations
