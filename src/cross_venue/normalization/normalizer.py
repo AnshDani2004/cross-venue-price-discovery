@@ -140,7 +140,7 @@ def normalize_dataset(
     )
     if clean_required and not dry_run and not _working_tree_clean():
         raise NormalizationError("final normalization requires a clean working tree")
-    commit = current_git_commit()
+    commit = normalizer_code_commit()
     if expected_commit is not None and expected_commit != commit:
         raise NormalizationError(f"expected commit {expected_commit}, found {commit}")
     bundle = load_normalization_inputs(
@@ -1821,3 +1821,30 @@ def _working_tree_clean() -> bool:
         check=False,
     )
     return result.returncode == 0 and result.stdout.strip() == ""
+
+
+def normalizer_code_commit() -> str:
+    """Return the latest Git commit affecting normalization code or config."""
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                "-1",
+                "--format=%H",
+                "--",
+                "configs/normalization.toml",
+                "src/cross_venue/normalization",
+                "src/cross_venue/collectors/coinbase/parser.py",
+                "src/cross_venue/collectors/kraken/parser.py",
+                "src/cross_venue/schemas/events.py",
+                "src/cross_venue/config.py",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return current_git_commit()
+    return result.stdout.strip() or current_git_commit()
