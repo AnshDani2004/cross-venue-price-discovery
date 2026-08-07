@@ -53,3 +53,17 @@
   expanded canonical trade/BBO lineage, derived BBO metrics, session and attempt
   metadata tables, per-session normalization manifests, no-op reuse, module CLI
   execution, and real seven-session validation/determinism outputs.
+- Added extended normalized-dataset validation with source catalog, source
+  snapshot, normalized output, lineage, and financial-integrity verification.
+- Preserved the legacy one-argument normalization validation API.
+- Added deterministic and idempotent normalized validation reports.
+- Added Phase 4A preliminary-readiness diagnostics over manifest-defined
+  partitioned Parquet outputs.
+- Classified the immutable seven-attempt dataset as `PRELIMINARY_READY` for
+  exploratory analysis while retaining
+  `FINAL_COMPOSITE_REQUIREMENTS_UNSATISFIED`.
+- Distinguished trade-observation overlap, approximately 12,972.85 seconds,
+  from official validated campaign paired overlap, 13,005.314148 seconds.
+- Recorded that accepted follow-up attempt F01 is not part of the immutable
+  seven-attempt snapshot. Current collection progress is provisionally
+  8 accepted attempts, leaving 2 additional accepted attempts required.

@@ -136,6 +136,43 @@ Equal timestamps are ordered by `local_receipt_ts`, then `venue`, then
 | `collection_started_at` | timestamp | UTC | Yes | Generated | Timezone-aware | Reject manifest |
 | `collection_ended_at` | timestamp | UTC | Yes | Generated | `>= collection_started_at` | Reject manifest |
 | `collector_version` | string | none | Yes | Generated | Git commit or package version | Reject manifest |
+| `analysis_calendar_date` | string | ISO 8601 | Yes | Campaign | `2026-07-31` | Reject |
+| `normalization_disposition` | string | none | Yes | Generated | `NORMALIZED_AND_VALIDATED` | Reject |
+| `normalized_trade_row_count` | integer | count | Yes | Generated | Matches Parquet rows | Reject |
+| `normalized_top_of_book_row_count` | integer | count | Yes | Generated | Matches Parquet rows | Reject |
+| `diagnostic_row_count` | integer | count | Yes | Generated | Sum of diagnostic outcomes | Reject |
+
+## Phase 3 Normalized Dataset Validation Report
+
+The output artifact `normalized_dataset_validation.json` verifies dataset integrity.
+
+| Field | Type | Unit | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `validation_schema_version` | string | none | Yes | Fixed at `3c-normalized-validation.1` |
+| `validation_report_id` | string | none | Yes | Stable hash of dataset, normalizer, and snapshot IDs |
+| `normalized_dataset_id` | string | none | Yes | Matched from normalization manifest |
+| `source_snapshot_id` | string | none | Yes | Stable identifier for Phase 1 snapshot |
+| `source_catalog_id` | string | none | Yes | Stable identifier for Phase 1 catalog |
+| `validation_timestamp` | timestamp | UTC | Yes | Time validation was executed |
+| `aggregate_disposition` | enum | none | Yes | `VALID` or `INVALID` |
+| `preliminary_analysis_eligibility` | enum | none | Yes | `ELIGIBLE` if valid |
+| `final_composite_status` | enum | none | Yes | `SATISFIED` if valid, meets min sessions, dates, buckets, and overlap requirements |
+| `attempt_count` | integer | none | Yes | Number of accepted attempts (e.g. 7 for the current preliminary snapshot) |
+| `venue_session_count` | integer | none | Yes | Number of valid venue sessions (e.g. 14 for the current preliminary snapshot) |
+| `trade_counts_by_venue` | dict | counts | Yes | Map of venue name to trade count |
+| `bbo_counts_by_venue` | dict | counts | Yes | Map of venue name to top-of-book count |
+| `source_snapshot_content_hash` | string | none | Yes | Semantic hash of the source snapshot |
+| `source_catalog_content_hash` | string | none | Yes | Semantic hash of the source catalog |
+| `validation_code_identity` | string | none | Yes | Current commit of validation execution |
+| `normalization_code_identity` | string | none | Yes | Matched from normalization manifest |
+| `normalized_manifest_hash` | string | none | Yes | Semantic hash of the normalized dataset manifest |
+| `aggregate_paired_overlap_seconds` | float | seconds | Yes | Authoritative validated campaign paired overlap duration |
+| `output_artifact_hashes` | dict | none | Yes | Map of Parquet files to their SHA256 checksums |
+| `per_attempt_validation_results` | dict | none | Yes | Detailed per-attempt validation status |
+| `per_venue_session_validation_results` | dict | none | Yes | Detailed per-venue session validation status |
+| `source_immutability_result` | enum | none | Yes | `VERIFIED_UNCHANGED`, `TAMPERED`, or `NOT_CHECKED` |
+| `snapshot_immutability_result` | enum | none | Yes | `VERIFIED_UNCHANGED`, `TAMPERED`, or `NOT_CHECKED` |
+| `normalized_output_immutability_result` | enum | none | Yes | `VERIFIED_UNCHANGED`, `TAMPERED`, or `NOT_CHECKED` |
 
 ## Quality Dispositions
 
@@ -258,3 +295,28 @@ The analysis normalization pipeline writes `metadata/sessions.parquet` with one 
 venue session and `metadata/attempts.parquet` with one row per accepted paired attempt.
 These metadata tables preserve snapshot, campaign, attempt, paired collection, session,
 runtime, quality, and normalization disposition fields for auditable downstream research.
+
+### aggregate_paired_overlap_seconds
+
+The authoritative paired-overlap duration recorded by validated campaign and
+quality artifacts. This measure is used to evaluate the final campaign overlap
+requirement.
+
+### aggregate_overlap_seconds
+
+The intersection of the minimum and maximum normalized trade timestamps for
+the two venues in a paired attempt. This measure is used by Phase 4A
+preliminary-readiness diagnostics.
+
+It may differ slightly from validated campaign paired overlap because the two
+metrics use different temporal boundaries.
+
+### preliminary_analysis_readiness
+
+Indicates whether the normalized dataset is suitable for exploratory research
+diagnostics. `PRELIMINARY_READY` does not imply that final-composite campaign
+requirements are satisfied.
+
+### final_composite_status
+
+Indicates whether all final collection requirements (including minimum accepted sessions, calendar dates, time buckets, and total overlap) have been met. For the immutable seven-attempt snapshot, the value is `FINAL_COMPOSITE_REQUIREMENTS_UNSATISFIED`.

@@ -14,7 +14,14 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_serializer,
+    field_validator,
+)
 
 from cross_venue.campaigns.models import (
     AttemptStatus,
@@ -346,7 +353,6 @@ def build_analysis_source_snapshot(
         ):
             validation = validate_analysis_source_snapshot(
                 snapshot_root=snapshot_root,
-                source_collection_root=source_root,
             )
             return SnapshotBuildResult(
                 created=False,
@@ -372,7 +378,6 @@ def build_analysis_source_snapshot(
         atomic_write_json(temporary_snapshot_path, snapshot.model_dump(mode="json"))
         validation = validate_analysis_source_snapshot(
             snapshot_root=temporary_root,
-            source_collection_root=source_root,
         )
         if validation.validation_status != "VALID":
             raise SnapshotValidationError("; ".join(validation.errors))
@@ -678,6 +683,7 @@ def validate_analysis_source_snapshot(
         if snapshot.aggregate_paired_overlap_seconds != catalog.aggregate_paired_overlap_seconds:
             errors.append("snapshot aggregate overlap does not match catalog")
         validate_attempt_membership(list(catalog.accepted_attempts))
+
         if source_collection_root is not None:
             rebuilt = build_source_catalog(
                 source_collection_root=source_collection_root,
@@ -685,7 +691,8 @@ def validate_analysis_source_snapshot(
             )
             if rebuilt.content_hash != catalog.content_hash:
                 errors.append("source catalog no longer matches source collection root")
-    except Exception as exc:
+
+    except ValidationError as exc:
         errors.append(str(exc))
         catalog = None
         snapshot = None

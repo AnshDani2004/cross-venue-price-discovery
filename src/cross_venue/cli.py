@@ -301,9 +301,23 @@ def build_parser() -> argparse.ArgumentParser:
     normalize.add_argument("--dry-run", action="store_true")
     validate_normalized = subparsers.add_parser(
         "validate-normalized-dataset",
-        help="validate a Phase 3A normalization manifest and output files",
+        help="validate a Phase 3 normalized dataset",
     )
     validate_normalized.add_argument("--normalization-manifest", type=Path, required=True)
+    validate_normalized.add_argument("--snapshot-root", type=Path, required=True)
+
+    dataset_validation_status = subparsers.add_parser(
+        "normalized-dataset-validation-status",
+        help="print normalized dataset validation status",
+    )
+    dataset_validation_status.add_argument("--normalization-manifest", type=Path, required=True)
+
+    preliminary_readiness = subparsers.add_parser(
+        "analyze-preliminary-readiness",
+        help="analyze preliminary research readiness",
+    )
+    preliminary_readiness.add_argument("--dataset-root", type=Path, required=True)
+    preliminary_readiness.add_argument("--validation-report", type=Path, required=True)
     catalog = subparsers.add_parser(
         "build-normalized-catalog",
         help="build DuckDB views over a normalized dataset",
@@ -440,7 +454,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="validate an existing immutable analysis source snapshot",
     )
     validate_snapshot.add_argument("--snapshot-root", type=Path, required=True)
-    validate_snapshot.add_argument("--source-collection-root", type=Path)
+    validate_snapshot.add_argument(
+        "--source-collection-root",
+        type=Path,
+        help="verify the reconstructed catalog against the local source tree",
+    )
+
     snapshot_status = subparsers.add_parser(
         "analysis-snapshot-status",
         help="print a compact analysis source snapshot status",
@@ -708,11 +727,38 @@ def main(
         return 0
     if args.command == "validate-normalized-dataset":
         try:
-            normalized_validation_report = validate_normalized_dataset(args.normalization_manifest)
+            normalized_validation_report = validate_normalized_dataset(
+                args.normalization_manifest,
+                snapshot_root=args.snapshot_root,
+            )
         except NormalizationError as exc:
             print(f"Normalized dataset invalid: {exc}")
             return 1
-        print(json_dumps(normalized_validation_report))
+        print(normalized_validation_report.model_dump_json(indent=2))
+        return 0
+    if args.command == "normalized-dataset-validation-status":
+        import sys
+
+        dataset_root = args.normalization_manifest.parent.parent
+        report_path = dataset_root / "validation" / "normalized_dataset_validation.json"
+        if not report_path.exists():
+            print("Validation report not found.", file=sys.stderr)
+            return 1
+        print(report_path.read_text(encoding="utf-8"))
+        return 0
+    if args.command == "analyze-preliminary-readiness":
+        from cross_venue.research.exceptions import ResearchError
+        from cross_venue.research.preliminary_diagnostics import analyze_preliminary_readiness
+
+        try:
+            readiness_report = analyze_preliminary_readiness(
+                dataset_root=args.dataset_root,
+                validation_report_path=args.validation_report,
+            )
+        except ResearchError as exc:
+            print(f"Preliminary readiness failed: {exc}")
+            return 1
+        print(readiness_report.model_dump_json(indent=2))
         return 0
     if args.command == "build-normalized-catalog":
         try:
@@ -924,7 +970,6 @@ def main(
             source_root = args.source_collection_root.expanduser().resolve()
             validation = validate_analysis_source_snapshot(
                 snapshot_root=args.snapshot_root,
-                source_collection_root=source_root,
             )
             if validation.validation_status != "VALID":
                 print(json_dumps(validation.model_dump(mode="json")))

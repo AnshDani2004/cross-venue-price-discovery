@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 
-class ResearchSnapshotError(Exception):
+class ResearchError(Exception):
+    """Base class for research-analysis failures."""
+
+
+class ResearchSnapshotError(ResearchError):
     """Base class for analysis source snapshot failures."""
 
 

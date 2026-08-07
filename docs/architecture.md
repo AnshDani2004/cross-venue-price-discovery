@@ -236,3 +236,25 @@ manifests listed in the snapshot source catalog, writes outputs under
 The aggregate normalized-snapshot manifest links back to the source snapshot and catalog.
 Per-session normalization manifests carry cache keys for future incremental eight-,
 nine-, or ten-session snapshots.
+
+## Phase 03C.3 Normalized Dataset Validation
+
+Phase 3C.3 applies rigorous data-integrity constraints, semantic hash checks, row-level PyArrow lineage verification, and snapshot-membership validation to finalized normalized datasets. This ensures the output is deterministically proven to match the immutable snapshot catalog before any Phase 4 statistical feature analysis begins.
+
+### Preliminary Readiness Semantics
+
+Phase 4A readiness is separate from final-composite completion.
+
+`PRELIMINARY_READY` indicates that:
+
+- The normalized dataset passed Phase 3C.3 validation.
+- The dataset is eligible for exploratory analysis.
+- Each accepted paired attempt satisfies the documented per-attempt
+  trade-observation overlap threshold.
+- Session and paired-overlap diagnostics were generated successfully.
+
+It does not imply that the final campaign requirements have been satisfied.
+
+Final-composite completion continues to use the authoritative campaign
+requirements, including 10 accepted attempts and 18,000 seconds of validated
+paired overlap.

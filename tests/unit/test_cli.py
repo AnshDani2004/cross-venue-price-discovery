@@ -1,6 +1,9 @@
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
 
 from cross_venue import __version__
 from cross_venue.cli import ArchivePersistenceResult, main
@@ -208,3 +211,59 @@ def test_smoke_archive_rejects_excessive_duration() -> None:
 
     assert result.returncode != 0
     assert "duration exceeds Phase 2B maximum" in result.stderr
+
+
+def test_validate_normalized_dataset_help() -> None:
+    result = run_cli("validate-normalized-dataset", "--help")
+    assert result.returncode == 0
+    assert "--normalization-manifest" in result.stdout
+    assert "--snapshot-root" in result.stdout
+
+
+def test_validate_normalized_dataset_missing_args() -> None:
+    result = run_cli("validate-normalized-dataset")
+    assert result.returncode != 0
+    assert "the following arguments are required: --normalization-manifest" in result.stderr
+
+
+def test_normalized_dataset_validation_status_help() -> None:
+    result = run_cli("normalized-dataset-validation-status", "--help")
+    assert result.returncode == 0
+    assert "--normalization-manifest" in result.stdout
+
+
+def test_validate_normalized_dataset_json_encoding(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    import json
+    from unittest.mock import patch
+
+    from cross_venue.normalization.validation import NormalizedDatasetValidationResult
+
+    manifest_path = tmp_path / "manifests" / "normalized_snapshot_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("{}")
+
+    with patch("cross_venue.cli.validate_normalized_dataset") as mock_val:
+        mock_val.return_value = NormalizedDatasetValidationResult(
+            validation_report_id="dummy-id",
+            validation_timestamp="2026-08-01T00:00:00Z",
+            aggregate_disposition="VALID",
+        )
+        exit_code = main(
+            [
+                "validate-normalized-dataset",
+                "--normalization-manifest",
+                str(manifest_path),
+                "--snapshot-root",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith("{")
+    payload = json.loads(captured.out)
+    assert isinstance(payload, dict)
+    assert payload["aggregate_disposition"] == "VALID"
