@@ -318,6 +318,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     preliminary_readiness.add_argument("--dataset-root", type=Path, required=True)
     preliminary_readiness.add_argument("--validation-report", type=Path, required=True)
+    preliminary_price_discovery = subparsers.add_parser(
+        "analyze-preliminary-price-discovery",
+        help="run Phase 4B preliminary price discovery analysis",
+    )
+    preliminary_price_discovery.add_argument("--dataset-root", type=Path, required=True)
+    preliminary_price_discovery.add_argument("--validation-report", type=Path, required=True)
+    preliminary_price_discovery.add_argument("--derived-root", type=Path, required=True)
     catalog = subparsers.add_parser(
         "build-normalized-catalog",
         help="build DuckDB views over a normalized dataset",
@@ -759,6 +766,21 @@ def main(
             print(f"Preliminary readiness failed: {exc}")
             return 1
         print(readiness_report.model_dump_json(indent=2))
+        return 0
+    if args.command == "analyze-preliminary-price-discovery":
+        from cross_venue.research.exceptions import ResearchError
+        from cross_venue.research.preliminary_analysis import analyze_preliminary_price_discovery
+
+        try:
+            analysis_report = analyze_preliminary_price_discovery(
+                dataset_root=args.dataset_root,
+                validation_report_path=args.validation_report,
+                derived_root=args.derived_root,
+            )
+        except ResearchError as exc:
+            print(f"Preliminary analysis failed: {exc}")
+            return 1
+        print(analysis_report.model_dump_json(indent=2))
         return 0
     if args.command == "build-normalized-catalog":
         try:
