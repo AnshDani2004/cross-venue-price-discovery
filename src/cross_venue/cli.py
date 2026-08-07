@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -499,7 +500,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="print a compact normalized analysis-snapshot status",
     )
     normalized_status.add_argument("--normalization-manifest", type=Path, required=True)
+
+    p = subparsers.add_parser(
+        "analyze-econometric-price-discovery", help="Run Phase 4C econometric price discovery"
+    )
+    p.add_argument("--dataset-root", type=Path, required=True)
+    p.add_argument("--validation-report", type=Path, required=True)
+    p.add_argument("--preliminary-result-root", type=Path, required=True)
+    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--derived-root", type=Path, required=True)
+    p.add_argument(
+        "--analysis-mode",
+        type=str,
+        required=True,
+        choices=["development", "final", "DEVELOPMENT", "FINAL"],
+    )
+    p.set_defaults(func=analyze_econometric_price_discovery_cmd)
+
     return parser
+
+
+def analyze_econometric_price_discovery_cmd(args: argparse.Namespace) -> int:
+
+    from cross_venue.research.econometric_analysis import (
+        AnalysisMode,
+        analyze_econometric_price_discovery,
+    )
+
+    try:
+        mode = AnalysisMode(args.analysis_mode.upper())
+    except ValueError:
+        print(f"Invalid analysis mode: {args.analysis_mode}", file=sys.stderr)
+        return 1
+
+    try:
+        res = analyze_econometric_price_discovery(
+            dataset_root=args.dataset_root,
+            validation_report_path=args.validation_report,
+            preliminary_result_root=args.preliminary_result_root,
+            config_path=args.config,
+            derived_root=args.derived_root,
+            analysis_mode=mode,
+        )
+        print(res.model_dump_json(indent=2))
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def main(
@@ -512,6 +559,7 @@ def main(
     """Run the CLI and return a process exit code."""
 
     parser = build_parser()
+
     args = parser.parse_args(argv)
     if args.command == "smoke-collect":
         try:
@@ -1033,6 +1081,7 @@ def main(
         except OSError as exc:
             print(f"Analysis normalization status failed: {exc}")
             return 1
+
         status = {
             "normalized_dataset_id": manifest.get("normalized_dataset_id"),
             "normalization_manifest_id": manifest.get("normalization_manifest_id"),
@@ -1048,7 +1097,12 @@ def main(
         }
         print(json_dumps(status))
         return 0
-    return 0
+
+    if args.command == "analyze-econometric-price-discovery":
+        ret = args.func(args)
+        return int(ret) if ret is not None else 0
+
+    return 1
 
 
 def _source_storage_config(source_root: Path) -> StorageConfig:

@@ -1,0 +1,63 @@
+# Phase 4C: Econometric Analysis Infrastructure Methodology Freeze
+# This file freezes the methodology parameters to prevent result-driven selection.
+
+[primary_specification]
+sampling_interval_ms = 100
+return_horizon_ms = 100
+trimming_rule = "baseline"
+estimation_scope = "per_attempt"
+
+[statistical_thresholds]
+alpha = 0.05
+minimum_effective_observations = 300
+
+[multiple_testing]
+method = "fdr_bh"
+family_definition = "direction_and_attempt_per_specification"
+
+[stationarity]
+adf_maxlag = "12ic"
+adf_autolag = "AIC"
+decision_rule = "reject_null_at_alpha"
+
+[var_specification]
+max_var_lag = 10
+lag_selection_criterion = "bic"
+stability_requirement = "all_roots_inside_unit_circle"
+
+[cointegration]
+johansen_det_order = 0
+johansen_k_ar_diff = 1
+decision_rule = "trace_statistic_rejects_null_at_alpha"
+
+[impulse_response]
+horizon = 20
+orthogonalization = "cholesky"
+evaluate_both_orderings = true
+ordering_policy = "evaluate_both"
+
+[price_discovery]
+compute_gonzalo_granger = true
+compute_hasbrouck = true
+evaluate_both_orderings = true
+ordering_policy = "evaluate_both"
+
+[predictive_regression]
+model = "ols"
+hac_covariance_rule = "newey_west"
+lag = 1
+
+[aggregation]
+method = "equal_attempt_weighting"
+attempt_weighting = "equal_attempt_weighting"
+combined_p_value_method = "fisher"
+
+[robustness_design]
+# A named set of deliberate robustness specifications
+configuration_ids = ["baseline", "sampling_250ms", "sampling_500ms", "horizon_250ms", "horizon_500ms", "no_additional_trim", "kraken_first"]
+evaluate_aggregate_scope = true
+
+[uncertainty]
+report_standard_errors = true
+report_confidence_intervals = true
+report_p_values = true
