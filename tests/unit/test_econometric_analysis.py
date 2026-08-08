@@ -371,17 +371,6 @@ def test_series_gaps_handled(mock_dataset_root, mock_prelim_root, mock_derived_r
     assert sd["gap_count"][0] == 2
 
 
-def test_series_no_return_across_gap():
-    # Enforced by gaps_handled logic checking usable_return_pairs
-    pass
-
-
-def test_series_no_lookahead():
-    # Enforced by Phase 4B `join_asof(strategy='backward')`, not Phase 4C explicitly,
-    # but predictive regressions check that t predicts t+1.
-    pass
-
-
 # --- 4. Stationarity Tests ---
 @pytest.mark.parametrize("scenario", ["stationary_ar", "random_walk", "constant", "insufficient"])
 def test_stationarity_scenarios(
@@ -729,13 +718,6 @@ def test_robustness_recompute(mock_dataset_root, mock_prelim_root, mock_derived_
     }
 
     assert aggregate["campaign_attempt_id"].null_count() == aggregate.height
-
-
-# --- 13. Aggregation ---
-def test_aggregation_weighting():
-    # Attempt weighting is inherently equal when taking medians across the attempt results.
-    # The pipeline records outputs per-attempt natively, which enforces equal weighting downstream.
-    pass
 
 
 # --- 14. Determinism ---
