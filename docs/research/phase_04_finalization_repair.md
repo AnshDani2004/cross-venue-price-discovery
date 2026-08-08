@@ -57,6 +57,18 @@ The underlying final 10-session normalized dataset remains valid.
 No statistical threshold will be relaxed to obtain significance or increase
 the number of usable sessions.
 
+### VECM deterministic-term interpretation
+
+The frozen Johansen specification remains `johansen_det_order = 0`. For
+rank-one VECM estimation in statsmodels, Phase 4C maps this constant case to
+`deterministic="co"`, meaning an unrestricted constant outside the
+cointegration relation.
+
+This mapping is an implementation interpretation of the already-frozen
+Johansen deterministic case. It does not change the statistical threshold,
+cointegration lag order, rank decision rule, or any result-dependent
+parameter.
+
 The following remain frozen:
 
 - alpha = 0.05

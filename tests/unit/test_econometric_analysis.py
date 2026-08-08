@@ -639,7 +639,8 @@ def test_price_discovery_scenarios(
                 self.evec = np.array([[0.6, -0.8], [0.8, 0.6]])
 
     monkeypatch.setattr(
-        "statsmodels.tsa.vector_ar.vecm.coint_johansen", lambda *args, **kwargs: MockJohansen()
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: MockJohansen(),
     )
 
     analyze_econometric_price_discovery(
@@ -1028,11 +1029,6 @@ def test_price_discovery_numerical_invariants(
                 assert 0 <= row["coinbase_lower"] <= row["coinbase_upper"] <= 1 + 1e-4
                 assert 0 <= row["kraken_lower"] <= row["kraken_upper"] <= 1 + 1e-4
 
-    pd_df = pl.read_parquet(next(iter(mock_derived_root.glob("*/price_discovery_metrics.parquet"))))
-    for row in pd_df.iter_rows(named=True):
-        if True:
-            assert row["status"] != "COMPUTED"
-
 
 def test_series_diagnostics_use_real_duration_and_longest_contiguous_segment(
     mock_dataset_root,
@@ -1342,9 +1338,7 @@ def test_adf_consumes_stationarity_configuration(
     config_path.write_text(config_text)
 
     df = gen_series(100)
-    df.write_parquet(
-        mock_prelim_root / "synchronized_observations.parquet"
-    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
     write_manifest(mock_prelim_root)
 
     calls = []
@@ -1371,9 +1365,7 @@ def test_adf_consumes_stationarity_configuration(
 
     analyze_econometric_price_discovery(
         mock_dataset_root,
-        mock_dataset_root
-        / "validation"
-        / "normalized_dataset_validation.json",
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
         mock_prelim_root,
         config_path,
         mock_derived_root,
@@ -1415,9 +1407,7 @@ def test_johansen_consumes_cointegration_configuration(
     config_path.write_text(config_text)
 
     df = gen_series(100)
-    df.write_parquet(
-        mock_prelim_root / "synchronized_observations.parquet"
-    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
     write_manifest(mock_prelim_root)
 
     calls = []
@@ -1446,9 +1436,7 @@ def test_johansen_consumes_cointegration_configuration(
 
     analyze_econometric_price_discovery(
         mock_dataset_root,
-        mock_dataset_root
-        / "validation"
-        / "normalized_dataset_validation.json",
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
         mock_prelim_root,
         config_path,
         mock_derived_root,
@@ -1458,3 +1446,477 @@ def test_johansen_consumes_cointegration_configuration(
     assert len(calls) == 1
     assert calls[0]["det_order"] == -1
     assert calls[0]["k_ar_diff"] == 7
+
+
+def test_rank_one_cointegration_fits_vecm_with_frozen_specification(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Rank-one Johansen result must trigger a fitted VECM with the frozen lag/deterministic case."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    n = 120
+    rng = np.random.default_rng(123)
+    common = np.cumsum(rng.normal(0.0, 0.01, n))
+    cb = np.exp(common) * 100.0
+    kr = np.exp(common + rng.normal(0.0, 0.001, n)) * 100.0
+
+    df = gen_series(n).with_columns(
+        pl.Series("cb_mid", cb),
+        pl.Series("kr_mid", kr),
+    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    class FakeJohansenResult:
+        lr1 = np.array([20.0, 0.5])
+        cvt = np.array(
+            [
+                [10.0, 15.0, 20.0],
+                [3.0, 4.0, 5.0],
+            ]
+        )
+        evec = np.array(
+            [
+                [1.0, 0.0],
+                [-1.0, 1.0],
+            ]
+        )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: FakeJohansenResult(),
+    )
+
+    calls = []
+
+    class FakeVECMResults:
+        alpha = np.array([[-0.20], [0.10]])
+        beta = np.array([[1.0], [-1.0]])
+        sigma_u = np.array(
+            [
+                [4.0, 1.0],
+                [1.0, 9.0],
+            ]
+        )
+        resid = np.ones((100, 2))
+
+    class FakeVECM:
+        def __init__(self, endog, **kwargs):
+            calls.append(
+                {
+                    "endog": np.asarray(endog),
+                    **kwargs,
+                }
+            )
+
+        def fit(self):
+            return FakeVECMResults()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VECM",
+        FakeVECM,
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["k_ar_diff"] == 1
+    assert calls[0]["coint_rank"] == 1
+    assert calls[0]["deterministic"] == "co"
+
+
+def test_gonzalo_granger_uses_fitted_vecm_alpha(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """GG component shares must depend on VECM alpha, not Johansen eigenvectors."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    n = 120
+    rng = np.random.default_rng(321)
+    common = np.cumsum(rng.normal(0.0, 0.01, n))
+
+    df = gen_series(n).with_columns(
+        pl.Series("cb_mid", np.exp(common) * 100.0),
+        pl.Series(
+            "kr_mid",
+            np.exp(common + rng.normal(0.0, 0.001, n)) * 100.0,
+        ),
+    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    class FakeJohansenResult:
+        lr1 = np.array([20.0, 0.5])
+        cvt = np.array(
+            [
+                [10.0, 15.0, 20.0],
+                [3.0, 4.0, 5.0],
+            ]
+        )
+
+        # Deliberately unrelated to the fitted VECM alpha.
+        evec = np.array(
+            [
+                [0.99, 0.0],
+                [0.01, 1.0],
+            ]
+        )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: FakeJohansenResult(),
+    )
+
+    class FakeVECMResults:
+        # For alpha = [-0.20, 0.10]',
+        # alpha_perp is [-0.10, -0.20] up to sign.
+        # Normalized component shares are therefore 1/3 and 2/3.
+        alpha = np.array([[-0.20], [0.10]])
+        beta = np.array([[1.0], [-1.0]])
+        sigma_u = np.array(
+            [
+                [4.0, 1.0],
+                [1.0, 9.0],
+            ]
+        )
+        resid = np.ones((100, 2))
+
+    class FakeVECM:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit(self):
+            return FakeVECMResults()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VECM",
+        FakeVECM,
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    pd_df = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "price_discovery_metrics.parquet"
+    )
+
+    gg = pd_df.filter(pl.col("metric") == "GONZALO_GRANGER_COMPONENT_SHARE").row(0, named=True)
+
+    assert gg["status"] == "COMPUTED"
+    assert gg["coinbase_value"] == pytest.approx(1.0 / 3.0)
+    assert gg["kraken_value"] == pytest.approx(2.0 / 3.0)
+
+
+def test_hasbrouck_uses_vecm_innovation_covariance_and_both_orderings(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Hasbrouck must produce genuine ordering bounds from VECM innovations."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    n = 120
+    rng = np.random.default_rng(456)
+    common = np.cumsum(rng.normal(0.0, 0.01, n))
+
+    df = gen_series(n).with_columns(
+        pl.Series("cb_mid", np.exp(common) * 100.0),
+        pl.Series(
+            "kr_mid",
+            np.exp(common + rng.normal(0.0, 0.001, n)) * 100.0,
+        ),
+    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    class FakeJohansenResult:
+        lr1 = np.array([20.0, 0.5])
+        cvt = np.array(
+            [
+                [10.0, 15.0, 20.0],
+                [3.0, 4.0, 5.0],
+            ]
+        )
+        evec = np.array(
+            [
+                [1.0, 0.0],
+                [-1.0, 1.0],
+            ]
+        )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: FakeJohansenResult(),
+    )
+
+    class FakeVECMResults:
+        alpha = np.array([[-0.20], [0.10]])
+        beta = np.array([[1.0], [-1.0]])
+
+        # Non-diagonal covariance is deliberate: ordering must matter.
+        sigma_u = np.array(
+            [
+                [4.0, 1.5],
+                [1.5, 9.0],
+            ]
+        )
+        resid = np.ones((100, 2))
+
+    class FakeVECM:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit(self):
+            return FakeVECMResults()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VECM",
+        FakeVECM,
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    pd_df = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "price_discovery_metrics.parquet"
+    )
+
+    hs = pd_df.filter(pl.col("metric") == "HASBROUCK_INFORMATION_SHARE").row(0, named=True)
+
+    assert hs["status"] == "COMPUTED"
+
+    assert 0.0 <= hs["coinbase_lower"] <= hs["coinbase_upper"] <= 1.0
+    assert 0.0 <= hs["kraken_lower"] <= hs["kraken_upper"] <= 1.0
+
+    assert hs["coinbase_lower"] < hs["coinbase_upper"]
+    assert hs["kraken_lower"] < hs["kraken_upper"]
+
+    assert hs["coinbase_lower"] == pytest.approx(1.0 - hs["kraken_upper"])
+    assert hs["coinbase_upper"] == pytest.approx(1.0 - hs["kraken_lower"])
+
+    # Hasbrouck must not simply be the point-valued GG scaffold.
+    assert (hs["coinbase_upper"] - hs["coinbase_lower"]) > 1e-6
+
+
+def _install_rank_one_vecm_fixture(
+    monkeypatch,
+    mock_prelim_root,
+    config_path,
+    *,
+    alpha,
+    beta,
+    sigma_u,
+):
+    """Install deterministic rank-one Johansen/VECM fixtures."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    n = 120
+    rng = np.random.default_rng(987)
+    common = np.cumsum(rng.normal(0.0, 0.01, n))
+
+    df = gen_series(n).with_columns(
+        pl.Series("cb_mid", np.exp(common) * 100.0),
+        pl.Series(
+            "kr_mid",
+            np.exp(common + rng.normal(0.0, 0.001, n)) * 100.0,
+        ),
+    )
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    class FakeJohansenResult:
+        lr1 = np.array([20.0, 0.5])
+        cvt = np.array(
+            [
+                [10.0, 15.0, 20.0],
+                [3.0, 4.0, 5.0],
+            ]
+        )
+        evec = np.array(
+            [
+                [1.0, 0.0],
+                [-1.0, 1.0],
+            ]
+        )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: FakeJohansenResult(),
+    )
+
+    class FakeVECMResults:
+        def __init__(self):
+            self.alpha = np.asarray(alpha, dtype=float)
+            self.beta = np.asarray(beta, dtype=float)
+            self.sigma_u = np.asarray(sigma_u, dtype=float)
+            self.resid = np.ones((100, 2))
+
+    class FakeVECM:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit(self):
+            return FakeVECMResults()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VECM",
+        FakeVECM,
+    )
+
+
+def test_cointegration_diagnostics_persist_fitted_vecm_alpha_beta(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Diagnostics must persist fitted VECM alpha/beta, not Johansen eigenvectors."""
+
+    alpha = np.array([[-0.25], [0.05]])
+    beta = np.array([[1.0], [-0.97]])
+
+    _install_rank_one_vecm_fixture(
+        monkeypatch,
+        mock_prelim_root,
+        config_path,
+        alpha=alpha,
+        beta=beta,
+        sigma_u=np.array(
+            [
+                [1.0, 0.2],
+                [0.2, 2.0],
+            ]
+        ),
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    cd = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "cointegration_diagnostics.parquet"
+    )
+
+    row = cd.filter(pl.col("campaign_attempt_id") != "").row(0, named=True)
+
+    assert row["inferred_cointegration_rank"] == 1
+    assert row["vecm_status"] == "ESTIMABLE"
+    assert row["residual_status"] == "COMPUTED"
+    assert row["deterministic_specification"] == "co"
+
+    assert json.loads(row["adjustment_coefficients"]) == pytest.approx([-0.25, 0.05])
+
+    assert json.loads(row["cointegrating_vector"]) == pytest.approx([1.0, -0.97])
+
+
+def test_hasbrouck_rejects_non_positive_definite_covariance(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Invalid innovation covariance must not produce fabricated IS bounds."""
+
+    _install_rank_one_vecm_fixture(
+        monkeypatch,
+        mock_prelim_root,
+        config_path,
+        alpha=np.array([[-0.20], [0.10]]),
+        beta=np.array([[1.0], [-1.0]]),
+        sigma_u=np.array(
+            [
+                [1.0, 2.0],
+                [2.0, 1.0],
+            ]
+        ),
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    pd_df = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "price_discovery_metrics.parquet"
+    )
+
+    gg = pd_df.filter(pl.col("metric") == "GONZALO_GRANGER_COMPONENT_SHARE").row(0, named=True)
+
+    hs = pd_df.filter(pl.col("metric") == "HASBROUCK_INFORMATION_SHARE").row(0, named=True)
+
+    # GG depends on alpha only, so the covariance failure must not
+    # invalidate an otherwise well-defined component share.
+    assert gg["status"] == "COMPUTED"
+
+    assert hs["status"] == "NOT_ESTIMABLE"
+    assert hs["insufficiency_reason"] == "HASBROUCK_COVARIANCE_INVALID"
+    assert hs["coinbase_value"] is None
+    assert hs["kraken_value"] is None
+    assert hs["coinbase_lower"] is None
+    assert hs["coinbase_upper"] is None
+    assert hs["kraken_lower"] is None
+    assert hs["kraken_upper"] is None

@@ -17,7 +17,7 @@ import statsmodels.api as sm  # type: ignore
 from statsmodels.stats.multitest import multipletests  # type: ignore
 from statsmodels.tsa.api import VAR  # type: ignore
 from statsmodels.tsa.stattools import adfuller  # type: ignore
-from statsmodels.tsa.vector_ar.vecm import coint_johansen  # type: ignore
+from statsmodels.tsa.vector_ar.vecm import VECM, coint_johansen  # type: ignore
 
 from cross_venue.research.econometric_models import EconometricPriceDiscoveryReport
 from cross_venue.research.exceptions import ResearchError
@@ -96,6 +96,127 @@ def _schema_fingerprint(df: pl.DataFrame) -> str:
     h = hashlib.sha256()
     h.update(schema_str.encode("utf-8"))
     return h.hexdigest()
+
+
+def _vecm_deterministic_from_johansen(det_order: int) -> str:
+    """Map the frozen Johansen deterministic case to statsmodels VECM.
+
+    Phase 4C freezes johansen_det_order=0. In the statsmodels Johansen
+    implementation this is the constant case. For the fitted VECM we use
+    an unrestricted constant outside the cointegration relation ("co").
+    """
+
+    if det_order == -1:
+        return "n"
+    if det_order == 0:
+        return "co"
+
+    raise ResearchError(
+        f"Phase 4C does not define a VECM deterministic mapping for johansen_det_order={det_order}."
+    )
+
+
+def _gonzalo_granger_component_shares(
+    alpha: np.ndarray,
+) -> tuple[float, float]:
+    """Compute two-market Gonzalo-Granger component shares from VECM alpha."""
+
+    alpha_vec = np.asarray(alpha, dtype=float).reshape(-1)
+    if alpha_vec.shape != (2,) or not np.all(np.isfinite(alpha_vec)):
+        raise ValueError("GG requires a finite two-element VECM alpha vector.")
+
+    # For alpha = [a1, a2]', a vector orthogonal to alpha is
+    # alpha_perp = [-a2, a1]'.  The permanent-component weights are
+    # alpha_perp normalized so that the two market weights sum to one.
+    alpha_perp = np.array(
+        [-alpha_vec[1], alpha_vec[0]],
+        dtype=float,
+    )
+
+    denominator = float(np.sum(alpha_perp))
+    if not np.isfinite(denominator) or abs(denominator) <= 1e-12:
+        raise ValueError("GG alpha-perp normalization is ill-conditioned.")
+
+    shares = alpha_perp / denominator
+    if not np.all(np.isfinite(shares)):
+        raise ValueError("GG produced non-finite component shares.")
+
+    if abs(float(np.sum(shares)) - 1.0) > 1e-8:
+        raise ValueError("GG component shares do not sum to one.")
+
+    return float(shares[0]), float(shares[1])
+
+
+def _hasbrouck_information_share_bounds(
+    alpha: np.ndarray,
+    sigma_u: np.ndarray,
+) -> tuple[float, float, float, float]:
+    """Compute two-market Hasbrouck information-share ordering bounds.
+
+    The common-trend innovation loading is proportional to alpha_perp.
+    Its arbitrary scale cancels from the information-share ratio.
+    Cholesky decompositions are evaluated under both venue orderings.
+    """
+
+    alpha_vec = np.asarray(alpha, dtype=float).reshape(-1)
+    sigma = np.asarray(sigma_u, dtype=float)
+
+    if alpha_vec.shape != (2,) or not np.all(np.isfinite(alpha_vec)):
+        raise ValueError("Hasbrouck requires a finite two-element VECM alpha vector.")
+
+    if sigma.shape != (2, 2) or not np.all(np.isfinite(sigma)):
+        raise ValueError("Hasbrouck requires a finite 2x2 innovation covariance matrix.")
+
+    if not np.allclose(sigma, sigma.T, rtol=1e-8, atol=1e-12):
+        raise ValueError("Hasbrouck innovation covariance matrix is not symmetric.")
+
+    alpha_perp = np.array(
+        [-alpha_vec[1], alpha_vec[0]],
+        dtype=float,
+    )
+
+    ordering_shares: list[np.ndarray] = []
+
+    for ordering in ((0, 1), (1, 0)):
+        permutation = np.asarray(ordering, dtype=int)
+        sigma_ordered = sigma[np.ix_(permutation, permutation)]
+        loading_ordered = alpha_perp[permutation]
+
+        # np.linalg.cholesky also supplies the positive-definiteness gate.
+        chol = np.linalg.cholesky(sigma_ordered)
+
+        permanent_innovation_loadings = loading_ordered @ chol
+        denominator = float(loading_ordered @ sigma_ordered @ loading_ordered)
+
+        if not np.isfinite(denominator) or denominator <= 1e-15:
+            raise ValueError("Hasbrouck permanent-innovation variance is degenerate.")
+
+        shares_ordered = np.square(permanent_innovation_loadings) / denominator
+
+        if (
+            not np.all(np.isfinite(shares_ordered))
+            or abs(float(np.sum(shares_ordered)) - 1.0) > 1e-8
+        ):
+            raise ValueError("Hasbrouck information shares failed normalization.")
+
+        shares_original = np.empty(2, dtype=float)
+        shares_original[permutation] = shares_ordered
+        ordering_shares.append(shares_original)
+
+    stacked = np.vstack(ordering_shares)
+
+    # Numerical noise at machine precision should not create invalid bounds.
+    stacked = np.clip(stacked, 0.0, 1.0)
+
+    lower = np.min(stacked, axis=0)
+    upper = np.max(stacked, axis=0)
+
+    return (
+        float(lower[0]),
+        float(upper[0]),
+        float(lower[1]),
+        float(upper[1]),
+    )
 
 
 def analyze_econometric_price_discovery(
@@ -699,14 +820,17 @@ def analyze_econometric_price_discovery(
                     )
 
             # Cointegration
-            # Exclude gaps for cointegration by just dropping NaN from level series
+            # The level-series gap policy is retained here; segment-aware
+            # cointegration handling is audited separately.
             c_mask = np.ones(len(log_cb), dtype=bool)
             c_mask[1:][gaps] = False
             level_data = np.column_stack((log_cb[c_mask], log_kr[c_mask]))
 
+            det_order = int(config["cointegration"]["johansen_det_order"])
+            k_diff = int(config["cointegration"]["johansen_k_ar_diff"])
+            vecm_deterministic = _vecm_deterministic_from_johansen(det_order)
+
             try:
-                det_order = int(config["cointegration"]["johansen_det_order"])
-                k_diff = int(config["cointegration"]["johansen_k_ar_diff"])
                 j_res = coint_johansen(
                     level_data,
                     det_order=det_order,
@@ -728,168 +852,175 @@ def analyze_econometric_price_discovery(
                     else 0.0
                 )
 
-                # If imaginary component exceeds tolerance, reject as not estimable
+                vecm_result = None
                 coint_status = "ESTIMABLE" if rank == 1 else "NOT_ESTIMABLE"
                 insufficiency = None if rank == 1 else "COINTEGRATION_RANK_NOT_ONE"
 
                 if rank == 1 and max_imag > 1e-4:
                     coint_status = "NOT_ESTIMABLE"
                     insufficiency = "COMPLEX_ROOTS_ABOVE_TOLERANCE"
-                    rank = 0  # Treat as invalid for GG/Hasbrouck downstream
+
+                if rank == 1 and insufficiency is None:
+                    try:
+                        vecm_result = VECM(
+                            level_data,
+                            k_ar_diff=k_diff,
+                            coint_rank=1,
+                            deterministic=vecm_deterministic,
+                        ).fit()
+                    except Exception:
+                        coint_status = "MODEL_INVALID"
+                        insufficiency = "VECM_FIT_FAILED"
+
+                if vecm_result is not None:
+                    alpha_vec = np.asarray(
+                        vecm_result.alpha,
+                        dtype=float,
+                    )[:, 0]
+                    beta_vec = np.asarray(
+                        vecm_result.beta,
+                        dtype=float,
+                    )[:, 0]
+                    residual_status = "COMPUTED"
+                else:
+                    alpha_vec = None
+                    beta_vec = None
+                    residual_status = (
+                        "MODEL_INVALID" if insufficiency == "VECM_FIT_FAILED" else "COMPUTED"
+                    )
 
                 if cfg_id == "baseline":
                     coint_rows.append(
                         {
                             "campaign_attempt_id": att,
                             "observations": len(level_data),
-                            "deterministic_specification": "no_constant",
+                            "deterministic_specification": (vecm_deterministic),
                             "lag_order": k_diff,
                             "johansen_trace_statistics": json.dumps(trace_stat.tolist()),
                             "critical_values": json.dumps(crit_vals.tolist()),
-                            "inferred_cointegration_rank": (
-                                rank if insufficiency != "COMPLEX_ROOTS_ABOVE_TOLERANCE" else 1
-                            ),
+                            "inferred_cointegration_rank": rank,
                             "vecm_status": coint_status,
-                            "adjustment_coefficients": json.dumps(j_res.evec[:, 0].real.tolist())
-                            if rank > 0
-                            else None,
-                            "cointegrating_vector": json.dumps(j_res.evec[:, 0].real.tolist())
-                            if rank > 0
-                            else None,
-                            "residual_status": "COMPUTED",
+                            "adjustment_coefficients": (
+                                json.dumps(alpha_vec.tolist()) if alpha_vec is not None else None
+                            ),
+                            "cointegrating_vector": (
+                                json.dumps(beta_vec.tolist()) if beta_vec is not None else None
+                            ),
+                            "residual_status": residual_status,
                             "insufficiency_reason": insufficiency,
                         }
                     )
 
-                if rank == 1 and cfg_id == "baseline":
-                    # Gonzalo-Granger calculation
-                    beta = j_res.evec[:, 0].real  # Cointegrating vector
-                    alpha_adj = j_res.evec[:, 0].real  # Adjustment vector
-                    # Actually we need alpha_perp.
-                    # If alpha = [a1, a2]', alpha_perp = [-a2, a1]'
-                    a1, a2 = alpha_adj[0], alpha_adj[1]
-                    alpha_perp = np.array([-a2, a1])
-
-                    denom = np.dot(alpha_perp, beta)
-                    if abs(denom) < 1e-12:
-                        denom = 0.0
-                    if denom == 0.0:
-                        status_gg = "NOT_ESTIMABLE"
-                        reason_gg = "GG_ILL_CONDITIONED"
-                        cb_val = None
-                        kr_val = None
-                    else:
-                        gg_weights = alpha_perp / denom
-                        w1 = gg_weights[0]
-                        w2 = gg_weights[1]
-
-                        tot = abs(w1) + abs(w2)
-
-                        import math
-
+                if rank == 1 and vecm_result is not None and cfg_id == "baseline":
+                    # Gonzalo-Granger component shares.
+                    try:
+                        (
+                            cb_gg,
+                            kr_gg,
+                        ) = _gonzalo_granger_component_shares(vecm_result.alpha)
                         status_gg = "COMPUTED"
                         reason_gg = None
-                        cb_val = None
-                        kr_val = None
-
-                        if not (math.isfinite(tot) and tot > 1e-12):
-                            status_gg = "NOT_ESTIMABLE"
-                            reason_gg = "GG_NORMALIZATION_DEGENERATE"
-                        else:
-                            cb_val_tmp = abs(w1) / tot
-                            kr_val_tmp = abs(w2) / tot
-                            if not (math.isfinite(cb_val_tmp) and math.isfinite(kr_val_tmp)):
-                                status_gg = "NOT_ESTIMABLE"
-                                reason_gg = "GG_NONFINITE_RESULT"
-                            elif abs((cb_val_tmp + kr_val_tmp) - 1.0) > 1e-6:
-                                status_gg = "NOT_ESTIMABLE"
-                                reason_gg = "GG_NORMALIZATION_DEGENERATE"
-                            else:
-                                cb_val = float(cb_val_tmp)
-                                kr_val = float(kr_val_tmp)
+                    except (ValueError, FloatingPointError):
+                        cb_gg = None
+                        kr_gg = None
+                        status_gg = "NOT_ESTIMABLE"
+                        reason_gg = "GG_ILL_CONDITIONED"
 
                     pd_rows.append(
                         {
                             "campaign_attempt_id": att,
-                            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
-                            "coinbase_value": cb_val,
-                            "kraken_value": kr_val,
-                            "coinbase_lower": cb_val,
-                            "coinbase_upper": cb_val,
-                            "kraken_lower": kr_val,
-                            "kraken_upper": kr_val,
+                            "metric": ("GONZALO_GRANGER_COMPONENT_SHARE"),
+                            "coinbase_value": cb_gg,
+                            "kraken_value": kr_gg,
+                            "coinbase_lower": cb_gg,
+                            "coinbase_upper": cb_gg,
+                            "kraken_lower": kr_gg,
+                            "kraken_upper": kr_gg,
                             "cointegration_rank": rank,
                             "effective_sample_count": len(level_data),
                             "status": status_gg,
                             "insufficiency_reason": reason_gg,
                         }
                     )
-                    # Hasbrouck bounds require positive definite covariance matrix
-                    # If any share is not in [0, 1] or lower > upper, reject.
-                    # Since we approximated Hasbrouck with GG for scaffolding, we apply same checks.
-                    status_hasbrouck = status_gg
-                    reason_hasbrouck = reason_gg
 
-                    if status_hasbrouck == "COMPUTED":
-                        # Validate Hasbrouck bounds specifically if they were distinct
-                        pass
+                    # Hasbrouck information-share bounds. There is no
+                    # methodology-frozen point estimator between the two
+                    # Cholesky orderings, so the point-value fields remain
+                    # null and only identified ordering bounds are reported.
+                    try:
+                        (
+                            cb_lower,
+                            cb_upper,
+                            kr_lower,
+                            kr_upper,
+                        ) = _hasbrouck_information_share_bounds(
+                            vecm_result.alpha,
+                            vecm_result.sigma_u,
+                        )
+                        status_hasbrouck = "COMPUTED"
+                        reason_hasbrouck = None
+                    except (
+                        ValueError,
+                        FloatingPointError,
+                        np.linalg.LinAlgError,
+                    ):
+                        cb_lower = None
+                        cb_upper = None
+                        kr_lower = None
+                        kr_upper = None
+                        status_hasbrouck = "NOT_ESTIMABLE"
+                        reason_hasbrouck = "HASBROUCK_COVARIANCE_INVALID"
 
                     pd_rows.append(
                         {
                             "campaign_attempt_id": att,
-                            "metric": "HASBROUCK_INFORMATION_SHARE",
-                            "coinbase_value": cb_val,
-                            "kraken_value": kr_val,
-                            "coinbase_lower": cb_val,
-                            "coinbase_upper": cb_val,
-                            "kraken_lower": kr_val,
-                            "kraken_upper": kr_val,
+                            "metric": ("HASBROUCK_INFORMATION_SHARE"),
+                            "coinbase_value": None,
+                            "kraken_value": None,
+                            "coinbase_lower": cb_lower,
+                            "coinbase_upper": cb_upper,
+                            "kraken_lower": kr_lower,
+                            "kraken_upper": kr_upper,
                             "cointegration_rank": rank,
                             "effective_sample_count": len(level_data),
                             "status": status_hasbrouck,
-                            "insufficiency_reason": reason_hasbrouck,
+                            "insufficiency_reason": (reason_hasbrouck),
                         }
                     )
+
                 elif cfg_id == "baseline":
-                    pd_rows.append(
-                        {
-                            "campaign_attempt_id": att,
-                            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
-                            "coinbase_value": None,
-                            "kraken_value": None,
-                            "coinbase_lower": None,
-                            "coinbase_upper": None,
-                            "kraken_lower": None,
-                            "kraken_upper": None,
-                            "cointegration_rank": rank,
-                            "effective_sample_count": len(level_data),
-                            "status": "NOT_ESTIMABLE",
-                            "insufficiency_reason": "COINTEGRATION_RANK_NOT_ONE",
-                        }
+                    reason = (
+                        insufficiency if insufficiency is not None else "COINTEGRATION_RANK_NOT_ONE"
                     )
-                    pd_rows.append(
-                        {
-                            "campaign_attempt_id": att,
-                            "metric": "HASBROUCK_INFORMATION_SHARE",
-                            "coinbase_value": None,
-                            "kraken_value": None,
-                            "coinbase_lower": None,
-                            "coinbase_upper": None,
-                            "kraken_lower": None,
-                            "kraken_upper": None,
-                            "cointegration_rank": rank,
-                            "effective_sample_count": len(level_data),
-                            "status": "NOT_ESTIMABLE",
-                            "insufficiency_reason": "COINTEGRATION_RANK_NOT_ONE",
-                        }
-                    )
+
+                    for metric in (
+                        "GONZALO_GRANGER_COMPONENT_SHARE",
+                        "HASBROUCK_INFORMATION_SHARE",
+                    ):
+                        pd_rows.append(
+                            {
+                                "campaign_attempt_id": att,
+                                "metric": metric,
+                                "coinbase_value": None,
+                                "kraken_value": None,
+                                "coinbase_lower": None,
+                                "coinbase_upper": None,
+                                "kraken_lower": None,
+                                "kraken_upper": None,
+                                "cointegration_rank": rank,
+                                "effective_sample_count": len(level_data),
+                                "status": "NOT_ESTIMABLE",
+                                "insufficiency_reason": reason,
+                            }
+                        )
+
             except Exception:
                 if cfg_id == "baseline":
                     coint_rows.append(
                         {
                             "campaign_attempt_id": att,
                             "observations": len(level_data),
-                            "deterministic_specification": "no_constant",
+                            "deterministic_specification": (vecm_deterministic),
                             "lag_order": k_diff,
                             "johansen_trace_statistics": None,
                             "critical_values": None,
@@ -898,41 +1029,30 @@ def analyze_econometric_price_discovery(
                             "adjustment_coefficients": None,
                             "cointegrating_vector": None,
                             "residual_status": "MODEL_INVALID",
-                            "insufficiency_reason": "Exception during fitting",
+                            "insufficiency_reason": ("Exception during Johansen fitting"),
                         }
                     )
-                    pd_rows.append(
-                        {
-                            "campaign_attempt_id": att,
-                            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
-                            "coinbase_value": None,
-                            "kraken_value": None,
-                            "coinbase_lower": None,
-                            "coinbase_upper": None,
-                            "kraken_lower": None,
-                            "kraken_upper": None,
-                            "cointegration_rank": None,
-                            "effective_sample_count": len(level_data),
-                            "status": "NOT_ESTIMABLE",
-                            "insufficiency_reason": "JOHANSEN_FAILED",
-                        }
-                    )
-                    pd_rows.append(
-                        {
-                            "campaign_attempt_id": att,
-                            "metric": "HASBROUCK_INFORMATION_SHARE",
-                            "coinbase_value": None,
-                            "kraken_value": None,
-                            "coinbase_lower": None,
-                            "coinbase_upper": None,
-                            "kraken_lower": None,
-                            "kraken_upper": None,
-                            "cointegration_rank": None,
-                            "effective_sample_count": len(level_data),
-                            "status": "NOT_ESTIMABLE",
-                            "insufficiency_reason": "JOHANSEN_FAILED",
-                        }
-                    )
+
+                    for metric in (
+                        "GONZALO_GRANGER_COMPONENT_SHARE",
+                        "HASBROUCK_INFORMATION_SHARE",
+                    ):
+                        pd_rows.append(
+                            {
+                                "campaign_attempt_id": att,
+                                "metric": metric,
+                                "coinbase_value": None,
+                                "kraken_value": None,
+                                "coinbase_lower": None,
+                                "coinbase_upper": None,
+                                "kraken_lower": None,
+                                "kraken_upper": None,
+                                "cointegration_rank": None,
+                                "effective_sample_count": len(level_data),
+                                "status": "NOT_ESTIMABLE",
+                                "insufficiency_reason": ("JOHANSEN_FAILED"),
+                            }
+                        )
 
             if cfg_id == "baseline":
                 try:
