@@ -711,7 +711,7 @@ def _validate_extended(
     final_composite = _resolve_final_composite(manifest, snapshot_data)
 
     # Current worktree identity (analysis repo, not source repo)
-    analysis_root = dataset_root.parent.parent.parent  # dataset_root/.../../..
+    analysis_root = Path(__file__).resolve().parents[3]
     validation_identity = _current_worktree_identity(analysis_root)
 
     # Stable report identity including all immutable inputs

@@ -690,16 +690,51 @@ def test_validation_code_identity_not_normalizer_commit(
     mock_dataset_root: Path,
     mock_snapshot_root: Path,
 ) -> None:
+    # 1. Dataset output can live in a temporary directory outside the repo
+    # (mock_dataset_root is already in a temporary pytest directory outside the repo)
+
     result = validate_normalized_dataset(
         mock_dataset_root,
         snapshot_root=mock_snapshot_root,
     )
-    # normalization_code_identity is the historical commit from the manifest
+
+    # 6. Normalization code identity remains sourced from the manifest
     assert result.normalization_code_identity == "commit"
-    # validation_code_identity is the current worktree (may be "unknown" in CI)
+
+    # 2. Validation code identity still resolves to the analysis repo Git identity
+    # It will not be "unknown" and will not be the mock "commit"
     assert result.validation_code_identity is not None
-    # They are not required to be equal
-    # (in dev, normalization commit may differ from current worktree)
+    assert result.validation_code_identity != "unknown"
+    assert "aadba" in result.validation_code_identity or len(result.validation_code_identity) >= 7
+
+
+def test_current_worktree_identity_behaviors() -> None:
+    from cross_venue.normalization.validation import _current_worktree_identity
+
+    # 3. Clean worktree returns the commit hash
+    with (
+        patch("subprocess.check_output", return_value="abcdef123456\n") as mock_check,
+        patch("subprocess.call", return_value=0),
+    ):
+        res = _current_worktree_identity(Path("/some/repo"))
+        assert res == "abcdef123456"
+        mock_check.assert_called_once()
+        assert mock_check.call_args[1]["cwd"] == Path("/some/repo")
+
+    # 4. Dirty worktree behavior
+    with (
+        patch("subprocess.check_output", return_value="abcdef123456\n"),
+        patch("subprocess.call", side_effect=[1, 0]),
+    ):
+        res = _current_worktree_identity(Path("/some/repo"))
+        assert res == "abcdef123456+dirty"
+
+    # 5. Fallback to "unknown"
+    import subprocess
+
+    with patch("subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "git")):
+        res = _current_worktree_identity(Path("/some/repo"))
+        assert res == "unknown"
 
 
 # ---------------------------------------------------------------------------
