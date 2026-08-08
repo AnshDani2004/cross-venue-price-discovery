@@ -517,6 +517,7 @@ def analyze_preliminary_price_discovery(
                 aid: str,
                 cb_s: str,
                 kr_s: str,
+                enforce_freshness_tolerance: bool = True,
             ) -> pl.DataFrame | None:
                 anchor_min = start_dt + timedelta(seconds=r_trim)
                 anchor_max = end_dt - timedelta(seconds=r_trim)
@@ -576,6 +577,7 @@ def analyze_preliminary_price_discovery(
                         pl.col("signed_spread_bps").abs().alias("absolute_spread_bps"),
                         pl.lit(aid).alias("campaign_attempt_id"),
                         pl.lit(r_tol).alias("alignment_tolerance_ms"),
+                        pl.lit(enforce_freshness_tolerance).alias("freshness_tolerance_enforced"),
                         pl.lit(r_stale).alias("stale_threshold_ms"),
                         pl.lit(cb_s).alias("coinbase_session_id"),
                         pl.lit(kr_s).alias("kraken_session_id"),
@@ -590,8 +592,11 @@ def analyze_preliminary_price_discovery(
                         .when(pl.col("kraken_observation_age_ms") > r_stale)
                         .then(pl.lit("KRAKEN_STALE"))
                         .when(
-                            (pl.col("coinbase_observation_age_ms") > r_tol)
-                            | (pl.col("kraken_observation_age_ms") > r_tol)
+                            pl.lit(enforce_freshness_tolerance)
+                            & (
+                                (pl.col("coinbase_observation_age_ms") > r_tol)
+                                | (pl.col("kraken_observation_age_ms") > r_tol)
+                            )
                         )
                         .then(pl.lit("ALIGNMENT_TOLERANCE_EXCEEDED"))
                         .otherwise(pl.lit("none"))
@@ -622,6 +627,7 @@ def analyze_preliminary_price_discovery(
                 attempt_id,
                 cb_sess,
                 kr_sess,
+                False,
             )
             if baseline_synced is not None:
                 all_cv_dfs.append(baseline_synced)
@@ -794,13 +800,29 @@ def analyze_preliminary_price_discovery(
                     )
 
             # Robustness designs
-            for rob_name, r_freq, r_tol, r_stale, r_trim in [
+            for (
+                rob_name,
+                r_freq,
+                r_tol,
+                r_stale,
+                r_trim,
+                enforce_freshness,
+            ) in [
                 (
                     "baseline",
                     config.sampling_interval_ms,
                     config.alignment_tolerance_ms,
                     config.stale_threshold_ms,
                     config.opening_trim_seconds,
+                    False,
+                ),
+                (
+                    "strict_freshness_50ms",
+                    config.sampling_interval_ms,
+                    config.alignment_tolerance_ms,
+                    config.stale_threshold_ms,
+                    config.opening_trim_seconds,
+                    True,
                 ),
                 (
                     "tighter_alignment",
@@ -808,6 +830,7 @@ def analyze_preliminary_price_discovery(
                     10,
                     config.stale_threshold_ms,
                     config.opening_trim_seconds,
+                    True,
                 ),
                 (
                     "looser_alignment",
@@ -815,6 +838,7 @@ def analyze_preliminary_price_discovery(
                     500,
                     config.stale_threshold_ms,
                     config.opening_trim_seconds,
+                    True,
                 ),
                 (
                     "tighter_stale",
@@ -822,6 +846,7 @@ def analyze_preliminary_price_discovery(
                     config.alignment_tolerance_ms,
                     100,
                     config.opening_trim_seconds,
+                    False,
                 ),
                 (
                     "looser_stale",
@@ -829,6 +854,7 @@ def analyze_preliminary_price_discovery(
                     config.alignment_tolerance_ms,
                     10000,
                     config.opening_trim_seconds,
+                    False,
                 ),
                 (
                     "faster_sampling",
@@ -836,6 +862,7 @@ def analyze_preliminary_price_discovery(
                     config.alignment_tolerance_ms,
                     config.stale_threshold_ms,
                     config.opening_trim_seconds,
+                    False,
                 ),
                 (
                     "slower_sampling",
@@ -843,6 +870,7 @@ def analyze_preliminary_price_discovery(
                     config.alignment_tolerance_ms,
                     config.stale_threshold_ms,
                     config.opening_trim_seconds,
+                    False,
                 ),
                 (
                     "no_trim",
@@ -850,10 +878,22 @@ def analyze_preliminary_price_discovery(
                     config.alignment_tolerance_ms,
                     config.stale_threshold_ms,
                     0,
+                    False,
                 ),
             ]:
                 rob_synced = perform_sync(
-                    r_freq, r_tol, r_stale, r_trim, start, end, cb, kr, attempt_id, cb_sess, kr_sess
+                    r_freq,
+                    r_tol,
+                    r_stale,
+                    r_trim,
+                    start,
+                    end,
+                    cb,
+                    kr,
+                    attempt_id,
+                    cb_sess,
+                    kr_sess,
+                    enforce_freshness,
                 )
                 if rob_synced is not None:
                     rob_acc = rob_synced.filter(~pl.col("is_rejected"))
