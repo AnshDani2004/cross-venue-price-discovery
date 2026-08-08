@@ -81,6 +81,32 @@ This policy does not alter the frozen sampling intervals, return horizons,
 gap threshold, minimum observation threshold, lag-selection rules, or
 statistical significance thresholds.
 
+### VAR and impulse-response ordering policy
+
+Phase 4C treats variable ordering as a model specification rather than
+reporting metadata.
+
+The baseline VAR ordering is Coinbase first, Kraken second. The frozen
+`kraken_first` robustness configuration reverses the actual VAR input
+matrix to Kraken first, Coinbase second.
+
+Orthogonalized impulse responses use Cholesky identification and therefore
+depend on variable ordering. The frozen impulse-response specification
+requires both Coinbase-first and Kraken-first orderings to be evaluated.
+
+For each ordering, array indices are mapped back to the original economic
+venue identities. A Coinbase shock and Kraken response therefore represent
+the same economic quantities under both Cholesky orderings even though
+their matrix indices reverse.
+
+The Kraken-first impulse-response model uses the same selected VAR lag as
+the baseline ordering so that the ordering comparison changes only the
+Cholesky/model variable order rather than the lag specification.
+
+This repair does not change the frozen VAR lag-selection rule, impulse
+response horizon, return construction, statistical thresholds, or
+robustness configuration set.
+
 ### Predictive-regression covariance and directionality
 
 The frozen Phase 4C predictive-regression specification is interpreted as

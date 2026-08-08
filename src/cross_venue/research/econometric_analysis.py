@@ -752,7 +752,13 @@ def analyze_econometric_price_discovery(
                         )
 
             # VAR
-            data = np.column_stack((cb_ret_c, kr_ret_c))
+            # Cholesky ordering is determined by variable order. The
+            # kraken_first robustness configuration must therefore alter
+            # the actual model matrix rather than metadata only.
+            if eff_ordering == "kraken_first":
+                data = np.column_stack((kr_ret_c, cb_ret_c))
+            else:
+                data = np.column_stack((cb_ret_c, kr_ret_c))
             if np.all(data == 0) or np.var(data[:, 0]) == 0 or np.var(data[:, 1]) == 0:
                 if cfg_id == "baseline":
                     var_rows.append(
@@ -855,21 +861,59 @@ def analyze_econometric_price_discovery(
                         }
                     )
 
-                    irf = res.irf(config["impulse_response"]["horizon"])
-                    orth = irf.orth_irfs
-                    for h_idx in range(len(orth)):
-                        irf_rows.append(
-                            {
-                                "campaign_attempt_id": att,
-                                "shock_venue": "coinbase",
-                                "response_venue": "kraken",
-                                "horizon": h_idx,
-                                "response": float(orth[h_idx, 1, 0]),
-                                "cumulative_response": float(np.sum(orth[: h_idx + 1, 1, 0])),
-                                "model_status": "COMPUTED",
-                                "ordering": "coinbase_first",
-                            }
-                        )
+                    irf_horizon = config["impulse_response"]["horizon"]
+                    coinbase_first_irf = res.irf(irf_horizon).orth_irfs
+
+                    # Cholesky orthogonalization depends on variable ordering.
+                    # Refit the same selected-lag VAR as [Kraken, Coinbase]
+                    # to evaluate the frozen second ordering.
+                    kraken_first_data = np.column_stack((kr_ret_c, cb_ret_c))
+                    kraken_first_res = VAR(kraken_first_data).fit(sel_lag)
+                    kraken_first_irf = kraken_first_res.irf(irf_horizon).orth_irfs
+
+                    irf_orderings = (
+                        (
+                            "coinbase_first",
+                            coinbase_first_irf,
+                            1,
+                            0,
+                        ),
+                        (
+                            "kraken_first",
+                            kraken_first_irf,
+                            0,
+                            1,
+                        ),
+                    )
+
+                    for ordering, orth, response_index, shock_index in irf_orderings:
+                        for h_idx in range(len(orth)):
+                            irf_rows.append(
+                                {
+                                    "campaign_attempt_id": att,
+                                    "shock_venue": "coinbase",
+                                    "response_venue": "kraken",
+                                    "horizon": h_idx,
+                                    "response": float(
+                                        orth[
+                                            h_idx,
+                                            response_index,
+                                            shock_index,
+                                        ]
+                                    ),
+                                    "cumulative_response": float(
+                                        np.sum(
+                                            orth[
+                                                : h_idx + 1,
+                                                response_index,
+                                                shock_index,
+                                            ]
+                                        )
+                                    ),
+                                    "model_status": "COMPUTED",
+                                    "ordering": ordering,
+                                }
+                            )
             except Exception:
                 if cfg_id == "baseline":
                     var_rows.append(

@@ -2451,3 +2451,184 @@ def test_predictive_regression_is_bidirectional_and_uses_contiguous_sample(
 
     assert set(regressions["prediction_horizon"].to_list()) == {1}
     assert set(regressions["predictor_lag"].to_list()) == {1}
+
+
+def test_kraken_first_robustness_reorders_var_input(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """kraken_first must reverse VAR variable order, not metadata only."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline", "kraken_first"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    captured = []
+
+    class CapturingVAR:
+        def __init__(self, endog):
+            captured.append(np.asarray(endog, dtype=float).copy())
+            raise RuntimeError("intentional VAR capture stop")
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        CapturingVAR,
+    )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("intentional Johansen stop")),
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(captured) == 2
+
+    # baseline = [Coinbase, Kraken]
+    # kraken_first must be the exact same observations with columns reversed.
+    np.testing.assert_allclose(
+        captured[1],
+        captured[0][:, ::-1],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_irf_evaluates_both_cholesky_orderings(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Baseline IRF output must evaluate both frozen Cholesky orderings."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    model_orderings = []
+
+    class FakeLagSelection:
+        bic = 1
+
+    class FakeCausality:
+        test_statistic = 0.0
+        df = (1, 1)
+        pvalue = 0.5
+
+    class FakeIRF:
+        def __init__(self, horizon):
+            self.orth_irfs = np.zeros(
+                (horizon + 1, 2, 2),
+                dtype=float,
+            )
+            for h in range(horizon + 1):
+                self.orth_irfs[h] = np.array(
+                    [
+                        [10.0 + h, 20.0 + h],
+                        [30.0 + h, 40.0 + h],
+                    ]
+                )
+
+    class FakeVARResults:
+        def __init__(self, endog):
+            self.endog = np.asarray(endog, dtype=float)
+            self.roots = np.array([2.0, 3.0])
+            self.aic = 1.0
+            self.bic = 1.0
+            self.hqic = 1.0
+            self.coefs = np.zeros((1, 2, 2), dtype=float)
+            self.stderr = np.zeros((2, 2), dtype=float)
+            self.nobs = len(self.endog) - 1
+
+        def test_causality(self, *args, **kwargs):
+            return FakeCausality()
+
+        def irf(self, horizon):
+            return FakeIRF(horizon)
+
+    class FakeVAR:
+        def __init__(self, endog):
+            self.endog = np.asarray(endog, dtype=float)
+
+            first_col = self.endog[:, 0]
+            second_col = self.endog[:, 1]
+
+            if not np.allclose(first_col, second_col):
+                if np.mean(np.abs(first_col)) >= np.mean(np.abs(second_col)):
+                    model_orderings.append("coinbase_first")
+                else:
+                    model_orderings.append("kraken_first")
+
+        def select_order(self, maxlags):
+            return FakeLagSelection()
+
+        def fit(self, lag):
+            assert lag == 1
+            return FakeVARResults(self.endog)
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        FakeVAR,
+    )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("intentional Johansen stop")),
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    irf = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "impulse_responses.parquet"
+    )
+
+    assert set(irf["ordering"].to_list()) == {
+        "coinbase_first",
+        "kraken_first",
+    }
+
+    assert set(irf["shock_venue"].to_list()) == {
+        "coinbase",
+    }
+
+    assert set(irf["response_venue"].to_list()) == {
+        "kraken",
+    }
+
+    ordering_counts = irf.group_by("ordering").len().sort("ordering")
+
+    assert ordering_counts.height == 2
+    assert len(set(ordering_counts["len"].to_list())) == 1
