@@ -2206,3 +2206,248 @@ def test_minimum_observation_gate_uses_longest_contiguous_return_segment(
 
     assert var_row["effective_sample_count"] == 10
     assert var_row["status"] == "NOT_ESTIMABLE"
+
+
+def _install_predictive_regression_capture(
+    monkeypatch,
+    *,
+    calls,
+):
+    """Capture Phase 4C OLS design matrices and covariance-fit arguments."""
+
+    class FakeRegressionResults:
+        params = np.array([0.0, 0.25, 0.10])
+        bse = np.array([0.1, 0.1, 0.1])
+        tvalues = np.array([0.0, 2.5, 1.0])
+        pvalues = np.array([1.0, 0.02, 0.30])
+
+    class FakeOLS:
+        def __init__(self, endog, exog):
+            self.call = {
+                "endog": np.asarray(endog, dtype=float),
+                "exog": np.asarray(exog, dtype=float),
+                "fit_kwargs": None,
+            }
+            calls.append(self.call)
+
+        def fit(self, **kwargs):
+            self.call["fit_kwargs"] = kwargs
+            return FakeRegressionResults()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.sm.OLS",
+        FakeOLS,
+    )
+
+    # Keep this gate isolated from unrelated estimators.
+    class StopVAR:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("intentional VAR stop")
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        StopVAR,
+    )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("intentional Johansen stop")),
+    )
+
+
+def test_predictive_regression_consumes_frozen_hac_configuration(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Predictive OLS must use configured Newey-West/HAC covariance bandwidth."""
+
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+
+    # Deliberately differ from the fixed one-step prediction design.
+    # This proves this field controls HAC bandwidth only.
+    config_text = config_text.replace(
+        "lag = 1",
+        "lag = 3",
+        1,
+    )
+    config_path.write_text(config_text)
+
+    n = 40
+    rng = np.random.default_rng(741)
+    cb_ret = rng.normal(0.0, 0.01, n)
+    kr_ret = rng.normal(0.0, 0.01, n)
+
+    df = gen_series(n).with_columns(
+        pl.Series(
+            "cb_mid",
+            np.exp(np.cumsum(cb_ret)) * 100.0,
+        ),
+        pl.Series(
+            "kr_mid",
+            np.exp(np.cumsum(kr_ret)) * 100.0,
+        ),
+    )
+
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    calls = []
+    _install_predictive_regression_capture(
+        monkeypatch,
+        calls=calls,
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert calls
+
+    for call in calls:
+        assert call["fit_kwargs"] == {
+            "cov_type": "HAC",
+            "cov_kwds": {"maxlags": 3},
+        }
+
+    regressions = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "predictive_regressions.parquet"
+    )
+
+    # HAC bandwidth must not silently redefine the predictive design.
+    assert set(regressions["prediction_horizon"].to_list()) == {1}
+    assert set(regressions["predictor_lag"].to_list()) == {1}
+
+
+def test_predictive_regression_is_bidirectional_and_uses_contiguous_sample(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Both predictive directions must use only the contiguous return segment."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = _write_two_segment_gap_fixture(mock_prelim_root)
+
+    calls = []
+    _install_predictive_regression_capture(
+        monkeypatch,
+        calls=calls,
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    # One OLS model for each predictive direction.
+    assert len(calls) == 2
+
+    cb = df["cb_mid"].to_numpy()
+    kr = df["kr_mid"].to_numpy()
+
+    # Rows 10..29 are the longest contiguous level segment.
+    # This supplies 19 contiguous one-step returns.
+    cb_ret = np.diff(np.log(cb[10:]))
+    kr_ret = np.diff(np.log(kr[10:]))
+
+    assert len(cb_ret) == 19
+    assert len(kr_ret) == 19
+
+    expected_kraken_predicts_coinbase_y = cb_ret[1:]
+    expected_kraken_predicts_coinbase_x = np.column_stack(
+        (
+            np.ones(18),
+            kr_ret[:-1],
+            cb_ret[:-1],
+        )
+    )
+
+    expected_coinbase_predicts_kraken_y = kr_ret[1:]
+    expected_coinbase_predicts_kraken_x = np.column_stack(
+        (
+            np.ones(18),
+            cb_ret[:-1],
+            kr_ret[:-1],
+        )
+    )
+
+    matched = set()
+
+    for index, call in enumerate(calls):
+        y = call["endog"]
+        x = call["exog"]
+
+        if np.allclose(
+            y,
+            expected_kraken_predicts_coinbase_y,
+            rtol=1e-12,
+            atol=1e-12,
+        ):
+            np.testing.assert_allclose(
+                x,
+                expected_kraken_predicts_coinbase_x,
+                rtol=1e-12,
+                atol=1e-12,
+            )
+            matched.add("kraken_predicts_coinbase")
+
+        elif np.allclose(
+            y,
+            expected_coinbase_predicts_kraken_y,
+            rtol=1e-12,
+            atol=1e-12,
+        ):
+            np.testing.assert_allclose(
+                x,
+                expected_coinbase_predicts_kraken_x,
+                rtol=1e-12,
+                atol=1e-12,
+            )
+            matched.add("coinbase_predicts_kraken")
+
+        else:
+            raise AssertionError(f"Unexpected predictive regression design in call {index}")
+
+    assert matched == {
+        "kraken_predicts_coinbase",
+        "coinbase_predicts_kraken",
+    }
+
+    regressions = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "predictive_regressions.parquet"
+    )
+
+    assert set(regressions["direction"].to_list()) == {
+        "kraken_predicts_coinbase",
+        "coinbase_predicts_kraken",
+    }
+
+    assert set(regressions["effective_sample_count"].to_list()) == {18}
+
+    assert set(regressions["prediction_horizon"].to_list()) == {1}
+    assert set(regressions["predictor_lag"].to_list()) == {1}

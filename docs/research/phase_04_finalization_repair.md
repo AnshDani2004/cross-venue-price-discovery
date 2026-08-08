@@ -81,6 +81,34 @@ This policy does not alter the frozen sampling intervals, return horizons,
 gap threshold, minimum observation threshold, lag-selection rules, or
 statistical significance thresholds.
 
+### Predictive-regression covariance and directionality
+
+The frozen Phase 4C predictive-regression specification is interpreted as
+one-step bidirectional OLS prediction with Newey-West/HAC covariance
+estimation.
+
+The predictive models are estimated separately as:
+
+- Kraken return at time t predicting Coinbase return at time t+1,
+  controlling for Coinbase return at time t;
+- Coinbase return at time t predicting Kraken return at time t+1,
+  controlling for Kraken return at time t.
+
+The frozen `predictive_regression.lag` field is interpreted as the
+Newey-West/HAC covariance bandwidth and is passed as the HAC `maxlags`
+parameter. It does not redefine the one-step prediction horizon or
+predictor lag.
+
+Both directional regressions use the same deterministic contiguous return
+sample required by the Phase 4C time-series estimation policy. Reported
+effective sample counts therefore reflect the actual lagged regression
+sample rather than the total number of individually usable returns.
+
+This repair replaces the historical HC3 covariance implementation and
+one-direction-only regression without changing the frozen prediction
+horizon, predictor lag, statistical significance threshold, or underlying
+return construction.
+
 ### VECM deterministic-term interpretation
 
 The frozen Johansen specification remains `johansen_det_order = 0`. For

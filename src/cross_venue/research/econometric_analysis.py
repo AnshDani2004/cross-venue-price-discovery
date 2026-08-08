@@ -1133,27 +1133,77 @@ def analyze_econometric_price_discovery(
                         )
 
             if cfg_id == "baseline":
-                try:
-                    x_mat = sm.add_constant(np.column_stack((kr_ret_c[:-1], cb_ret_c[:-1])))
-                    y = cb_ret_c[1:]
-                    if len(x_mat) > 5 and np.var(x_mat[:, 1]) > 0:
-                        mod = sm.OLS(y, x_mat).fit(cov_type="HC3")
-                        reg_rows.append(
-                            {
-                                "campaign_attempt_id": att,
-                                "direction": "kraken_predicts_coinbase",
-                                "prediction_horizon": 1,
-                                "predictor_lag": 1,
-                                "coefficient": float(mod.params[1]),
-                                "standard_error": float(mod.bse[1]),
-                                "t_statistic": float(mod.tvalues[1]),
-                                "raw_p_value": float(mod.pvalues[1]),
-                                "effective_sample_count": len(y),
-                                "fit_status": "COMPUTED",
-                            }
+                predictive_config = config["predictive_regression"]
+                predictive_model = str(predictive_config["model"]).lower()
+                hac_rule = str(predictive_config["hac_covariance_rule"]).lower()
+                hac_lag = int(predictive_config["lag"])
+
+                if predictive_model != "ols":
+                    raise ResearchError(
+                        f"Unsupported Phase 4C predictive regression model: {predictive_model}"
+                    )
+
+                if hac_rule != "newey_west":
+                    raise ResearchError(
+                        f"Unsupported Phase 4C predictive covariance rule: {hac_rule}"
+                    )
+
+                if hac_lag < 0:
+                    raise ResearchError("Predictive-regression HAC lag must be non-negative.")
+
+                # Preserve the frozen one-step predictive design.
+                # The TOML lag controls Newey-West/HAC bandwidth only.
+                predictive_designs = (
+                    (
+                        "kraken_predicts_coinbase",
+                        kr_ret_c,
+                        cb_ret_c,
+                    ),
+                    (
+                        "coinbase_predicts_kraken",
+                        cb_ret_c,
+                        kr_ret_c,
+                    ),
+                )
+
+                for direction, predictor, target in predictive_designs:
+                    try:
+                        x_mat = sm.add_constant(
+                            np.column_stack(
+                                (
+                                    predictor[:-1],
+                                    target[:-1],
+                                )
+                            )
                         )
-                except Exception:
-                    pass
+                        y = target[1:]
+
+                        if len(x_mat) > 5 and np.var(x_mat[:, 1]) > 0:
+                            mod = sm.OLS(
+                                y,
+                                x_mat,
+                            ).fit(
+                                cov_type="HAC",
+                                cov_kwds={"maxlags": hac_lag},
+                            )
+
+                            reg_rows.append(
+                                {
+                                    "campaign_attempt_id": att,
+                                    "direction": direction,
+                                    "prediction_horizon": 1,
+                                    "predictor_lag": 1,
+                                    "coefficient": float(mod.params[1]),
+                                    "standard_error": float(mod.bse[1]),
+                                    "t_statistic": float(mod.tvalues[1]),
+                                    "raw_p_value": float(mod.pvalues[1]),
+                                    "effective_sample_count": len(y),
+                                    "fit_status": "COMPUTED",
+                                }
+                            )
+                    except Exception:
+                        # One failed direction must not suppress the other.
+                        continue
             # Robustness Metric
             r_metric = "VAR_STABILITY"
             r_val = 1.0 if is_stable else 0.0
