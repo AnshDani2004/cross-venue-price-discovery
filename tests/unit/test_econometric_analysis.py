@@ -49,6 +49,8 @@ def mock_prelim_root(tmp_path, mock_dataset_root):
             {
                 "validation_report_id": "val_123",
                 "analysis_result_id": "prelim_123",
+                "authoritative_paired_overlap_seconds": 4321.25,
+                "untrimmed_empirical_trade_overlap_seconds": 4298.75,
             }
         )
     )
@@ -835,7 +837,9 @@ def test_all_frozen_robustness_ids_are_generated(
     config_path.write_text(cfg_text)
 
     prelim_rep = mock_prelim_root / "preliminary_price_discovery_report.json"
-    prelim_rep.write_text('{"validation_report_id": "abc", "analysis_result_id": "def"}')
+    prelim_rep.write_text(
+        '{"validation_report_id": "abc", "analysis_result_id": "def", "authoritative_paired_overlap_seconds": 4321.25, "untrimmed_empirical_trade_overlap_seconds": 4298.75}'
+    )
 
     manifest = mock_prelim_root / "output_manifest.json"
     manifest.write_text("[]")
@@ -914,7 +918,9 @@ def test_successful_rank_0_propagates_to_pd_rows(
 
     prelim_rep = mock_prelim_root / "preliminary_price_discovery_report.json"
     prelim_rep.parent.mkdir(parents=True, exist_ok=True)
-    prelim_rep.write_text('{"validation_report_id": "abc", "analysis_result_id": "def"}')
+    prelim_rep.write_text(
+        '{"validation_report_id": "abc", "analysis_result_id": "def", "authoritative_paired_overlap_seconds": 4321.25, "untrimmed_empirical_trade_overlap_seconds": 4298.75}'
+    )
 
     manifest = mock_prelim_root / "output_manifest.json"
     manifest.write_text("[]")
@@ -2980,3 +2986,216 @@ def test_aggregate_inference_excludes_non_estimable_attempts():
     assert missing["degrees_of_freedom"] is None
     assert missing["combined_p_value"] is None
     assert missing["status"] == "NOT_ESTIMABLE"
+
+
+def test_report_propagates_phase_04b_overlap_provenance(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Phase 4C must report Phase 4B overlap values, never stale literals."""
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    prelim_path = mock_prelim_root / "preliminary_price_discovery_report.json"
+    prelim = json.loads(prelim_path.read_text())
+    prelim["authoritative_paired_overlap_seconds"] = 9876.54321
+    prelim["untrimmed_empirical_trade_overlap_seconds"] = 9654.32109
+    prelim_path.write_text(json.dumps(prelim))
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert result.authoritative_paired_overlap_seconds == pytest.approx(9876.54321)
+    assert result.empirical_paired_overlap_seconds == pytest.approx(9654.32109)
+
+
+def test_report_support_counts_require_complete_attempt_level_support():
+    """Report support counts must use estimator-specific unique attempts."""
+
+    import cross_venue.research.econometric_analysis as module
+
+    assert hasattr(module, "_compute_report_support_counts")
+
+    stat_rows = [
+        {
+            "campaign_attempt_id": "A",
+            "venue": "coinbase",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "venue": "kraken",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "venue": "coinbase",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "venue": "kraken",
+            "status": "COMPUTED",
+        },
+    ]
+
+    var_rows = [
+        {
+            "campaign_attempt_id": "C",
+            "fit_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "D",
+            "fit_status": "UNSTABLE",
+        },
+    ]
+
+    granger_rows = [
+        {
+            "campaign_attempt_id": "A",
+            "direction": "coinbase_predicts_kraken",
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "kraken_predicts_coinbase",
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "direction": "coinbase_predicts_kraken",
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "direction": "kraken_predicts_coinbase",
+            "model_validity_status": "COMPUTED",
+        },
+    ]
+
+    irf_rows = [
+        {
+            "campaign_attempt_id": "C",
+            "model_status": "COMPUTED",
+            "horizon": 0,
+            "ordering": "coinbase_first",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "model_status": "COMPUTED",
+            "horizon": 1,
+            "ordering": "coinbase_first",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "model_status": "COMPUTED",
+            "horizon": 0,
+            "ordering": "kraken_first",
+        },
+    ]
+
+    coint_rows = [
+        {
+            "campaign_attempt_id": "C",
+            "residual_status": "COMPUTED",
+            "vecm_status": "ESTIMABLE",
+        },
+        {
+            "campaign_attempt_id": "D",
+            "residual_status": "COMPUTED",
+            "vecm_status": "NOT_ESTIMABLE",
+        },
+        {
+            "campaign_attempt_id": "E",
+            "residual_status": "MODEL_INVALID",
+            "vecm_status": "MODEL_INVALID",
+        },
+    ]
+
+    pd_rows = [
+        {
+            "campaign_attempt_id": "C",
+            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "C",
+            "metric": "HASBROUCK_INFORMATION_SHARE",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "D",
+            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
+            "status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "D",
+            "metric": "HASBROUCK_INFORMATION_SHARE",
+            "status": "NOT_ESTIMABLE",
+        },
+        {
+            "campaign_attempt_id": "E",
+            "metric": "GONZALO_GRANGER_COMPONENT_SHARE",
+            "status": "NOT_ESTIMABLE",
+        },
+        {
+            "campaign_attempt_id": "E",
+            "metric": "HASBROUCK_INFORMATION_SHARE",
+            "status": "COMPUTED",
+        },
+    ]
+
+    counts = module._compute_report_support_counts(
+        stat_diag_rows=stat_rows,
+        var_rows=var_rows,
+        granger_rows=granger_rows,
+        irf_rows=irf_rows,
+        coint_rows=coint_rows,
+        pd_rows=pd_rows,
+    )
+
+    assert counts == {
+        "attempts_usable_for_stationarity": 1,
+        "attempts_usable_for_var": 1,
+        "attempts_usable_for_granger": 1,
+        "attempts_usable_for_irf": 1,
+        "attempts_supporting_cointegration": 2,
+        "attempts_supporting_vecm": 1,
+        "attempts_supporting_gonzalo_granger": 2,
+        "attempts_supporting_hasbrouck_is": 2,
+    }
+
+
+def test_report_counts_aggregate_inference_rows(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Canonical report must account for aggregate inference output rows."""
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert hasattr(result, "aggregate_inference_row_count")
+    assert result.aggregate_inference_row_count == 4

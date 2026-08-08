@@ -39,6 +39,7 @@ class EconometricPriceDiscoveryReport(BaseModel):
     # Row Counts
     predictive_regression_row_count: int
     robustness_row_count: int
+    aggregate_inference_row_count: int = 0
 
     warnings: list[str] = Field(default_factory=list)
     blocking_conditions: list[str] = Field(default_factory=list)

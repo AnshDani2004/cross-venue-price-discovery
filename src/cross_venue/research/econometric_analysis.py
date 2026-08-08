@@ -460,6 +460,116 @@ def _build_aggregate_inference_rows(
     return output
 
 
+def _compute_report_support_counts(
+    *,
+    stat_diag_rows: list[dict[str, Any]],
+    var_rows: list[dict[str, Any]],
+    granger_rows: list[dict[str, Any]],
+    irf_rows: list[dict[str, Any]],
+    coint_rows: list[dict[str, Any]],
+    pd_rows: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Count unique attempts satisfying each estimator's support contract."""
+
+    def complete_attempts(
+        rows: list[dict[str, Any]],
+        *,
+        status_field: str,
+        status_value: str,
+        category_field: str,
+        expected_categories: set[str],
+    ) -> set[str]:
+        observed: dict[str, set[str]] = {}
+
+        for row in rows:
+            if row.get(status_field) != status_value:
+                continue
+
+            attempt_id = row.get("campaign_attempt_id")
+            category = row.get(category_field)
+
+            if attempt_id is None or category is None:
+                continue
+
+            observed.setdefault(str(attempt_id), set()).add(str(category))
+
+        return {
+            attempt_id
+            for attempt_id, categories in observed.items()
+            if expected_categories.issubset(categories)
+        }
+
+    stationarity_attempts = complete_attempts(
+        stat_diag_rows,
+        status_field="status",
+        status_value="COMPUTED",
+        category_field="venue",
+        expected_categories={"coinbase", "kraken"},
+    )
+
+    granger_attempts = complete_attempts(
+        granger_rows,
+        status_field="model_validity_status",
+        status_value="COMPUTED",
+        category_field="direction",
+        expected_categories={
+            "coinbase_predicts_kraken",
+            "kraken_predicts_coinbase",
+        },
+    )
+
+    var_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in var_rows
+        if row.get("campaign_attempt_id") is not None and row.get("fit_status") == "COMPUTED"
+    }
+
+    irf_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in irf_rows
+        if row.get("campaign_attempt_id") is not None and row.get("model_status") == "COMPUTED"
+    }
+
+    cointegration_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in coint_rows
+        if row.get("campaign_attempt_id") is not None and row.get("residual_status") == "COMPUTED"
+    }
+
+    vecm_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in coint_rows
+        if row.get("campaign_attempt_id") is not None and row.get("vecm_status") == "ESTIMABLE"
+    }
+
+    gg_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in pd_rows
+        if row.get("campaign_attempt_id") is not None
+        and row.get("metric") == "GONZALO_GRANGER_COMPONENT_SHARE"
+        and row.get("status") == "COMPUTED"
+    }
+
+    hasbrouck_attempts = {
+        str(row["campaign_attempt_id"])
+        for row in pd_rows
+        if row.get("campaign_attempt_id") is not None
+        and row.get("metric") == "HASBROUCK_INFORMATION_SHARE"
+        and row.get("status") == "COMPUTED"
+    }
+
+    return {
+        "attempts_usable_for_stationarity": len(stationarity_attempts),
+        "attempts_usable_for_var": len(var_attempts),
+        "attempts_usable_for_granger": len(granger_attempts),
+        "attempts_usable_for_irf": len(irf_attempts),
+        "attempts_supporting_cointegration": len(cointegration_attempts),
+        "attempts_supporting_vecm": len(vecm_attempts),
+        "attempts_supporting_gonzalo_granger": len(gg_attempts),
+        "attempts_supporting_hasbrouck_is": len(hasbrouck_attempts),
+    }
+
+
 def analyze_econometric_price_discovery(
     dataset_root: Path,
     validation_report_path: Path,
@@ -1674,6 +1784,15 @@ def analyze_econometric_price_discovery(
             }
         )
 
+    support_counts = _compute_report_support_counts(
+        stat_diag_rows=stat_diag_rows,
+        var_rows=var_rows,
+        granger_rows=granger_rows,
+        irf_rows=irf_rows,
+        coint_rows=coint_rows,
+        pd_rows=pd_rows,
+    )
+
     rep = EconometricPriceDiscoveryReport(
         analysis_result_id=analysis_id,
         analysis_mode=analysis_mode.value,
@@ -1689,26 +1808,23 @@ def analyze_econometric_price_discovery(
         dirty_working_tree=dirty,
         total_attempt_count=len(attempts),
         venue_session_count=len(attempts) * 2,
-        authoritative_paired_overlap_seconds=13005.0,
-        empirical_paired_overlap_seconds=12972.0,
-        attempts_usable_for_stationarity=len(
-            [r for r in stat_diag_rows if r["status"] == "COMPUTED"]
-        )
-        // 2,
-        attempts_usable_for_var=len([r for r in var_rows if r["fit_status"] == "COMPUTED"]),
-        attempts_usable_for_granger=len(
-            [r for r in granger_rows if r["model_validity_status"] == "COMPUTED"]
-        )
-        // 2,
-        attempts_usable_for_irf=len({r["campaign_attempt_id"] for r in irf_rows}),
-        attempts_supporting_cointegration=len(
-            [r for r in coint_rows if r["residual_status"] == "COMPUTED"]
+        authoritative_paired_overlap_seconds=float(
+            prelim_rep["authoritative_paired_overlap_seconds"]
         ),
-        attempts_supporting_vecm=len([r for r in coint_rows if r["vecm_status"] == "ESTIMABLE"]),
-        attempts_supporting_gonzalo_granger=len([r for r in pd_rows if r["status"] == "COMPUTED"]),
-        attempts_supporting_hasbrouck_is=len([r for r in pd_rows if r["status"] == "COMPUTED"]),
+        empirical_paired_overlap_seconds=float(
+            prelim_rep["untrimmed_empirical_trade_overlap_seconds"]
+        ),
+        attempts_usable_for_stationarity=support_counts["attempts_usable_for_stationarity"],
+        attempts_usable_for_var=support_counts["attempts_usable_for_var"],
+        attempts_usable_for_granger=support_counts["attempts_usable_for_granger"],
+        attempts_usable_for_irf=support_counts["attempts_usable_for_irf"],
+        attempts_supporting_cointegration=support_counts["attempts_supporting_cointegration"],
+        attempts_supporting_vecm=support_counts["attempts_supporting_vecm"],
+        attempts_supporting_gonzalo_granger=support_counts["attempts_supporting_gonzalo_granger"],
+        attempts_supporting_hasbrouck_is=support_counts["attempts_supporting_hasbrouck_is"],
         predictive_regression_row_count=len(reg_rows),
         robustness_row_count=len(robustness_rows),
+        aggregate_inference_row_count=len(aggregate_inference_rows),
         warnings=warnings_list,
         blocking_conditions=blocking_conditions,
         output_inventory=[str(i["relative_path"]) for i in out_inventory],

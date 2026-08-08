@@ -81,6 +81,39 @@ This policy does not alter the frozen sampling intervals, return horizons,
 gap threshold, minimum observation threshold, lag-selection rules, or
 statistical significance thresholds.
 
+### Phase 4C report provenance and support-count policy
+
+Phase 4C report-level dataset quantities are propagated from canonical
+upstream artifacts rather than hard-coded development values.
+
+`authoritative_paired_overlap_seconds` is taken directly from the Phase 4B
+preliminary price-discovery report's authoritative paired-overlap field.
+`empirical_paired_overlap_seconds` is taken directly from Phase 4B's
+untrimmed empirical trade-overlap field. Phase 4C does not independently
+reconstruct either value.
+
+Estimator-support counts represent unique campaign attempts satisfying the
+actual support contract for that estimator.
+
+Stationarity support requires both Coinbase and Kraken ADF results to be
+computed within the same attempt. Granger support requires both registered
+directional Granger tests to be computed within the same attempt.
+
+VAR and IRF support are counted by unique computed attempt identities.
+Cointegration and VECM support are counted from their estimator-specific
+statuses.
+
+Gonzalo-Granger and Hasbrouck support are counted separately using their
+respective price-discovery metric identities. A computed row for one
+price-discovery estimator cannot increase the support count of the other.
+
+The canonical Phase 4C report also records the row count of the dedicated
+`aggregate_inference.parquet` artifact.
+
+This repair removes development-era overlap literals and row-count division
+shortcuts without changing estimator definitions, statistical thresholds,
+or dataset eligibility rules.
+
 ### Inference aggregation and multiple-testing policy
 
 The frozen Phase 4C multiple-testing family is interpreted as the
