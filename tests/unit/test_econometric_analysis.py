@@ -1920,3 +1920,289 @@ def test_hasbrouck_rejects_non_positive_definite_covariance(
     assert hs["coinbase_upper"] is None
     assert hs["kraken_lower"] is None
     assert hs["kraken_upper"] is None
+
+
+def _write_two_segment_gap_fixture(mock_prelim_root):
+    """Create two contiguous segments separated by one >3x sampling gap.
+
+    Segment 1: 10 level observations -> 9 valid 100 ms returns.
+    Segment 2: 20 level observations -> 19 valid 100 ms returns.
+
+    The second segment is therefore the unique longest contiguous segment
+    for both level and return modeling.
+    """
+
+    n = 30
+    timestamps = []
+
+    current_t = 1_000_000_000
+    for i in range(n):
+        if i == 10:
+            current_t += 500_000_000
+        else:
+            current_t += 100_000_000
+        timestamps.append(current_t)
+
+    idx = np.arange(n, dtype=float)
+
+    # Deterministic, positive, non-constant prices with varying returns.
+    cb_mid = 100.0 + 0.20 * idx + 0.005 * idx**2
+    kr_mid = 101.0 + 0.15 * idx + 0.007 * idx**2
+
+    df = pl.DataFrame(
+        {
+            "campaign_attempt_id": ["A"] * n,
+            "anchor_timestamp_utc": timestamps,
+            "cb_mid": cb_mid,
+            "kr_mid": kr_mid,
+            "is_rejected": [False] * n,
+        }
+    )
+
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    return df
+
+
+def test_var_uses_longest_contiguous_return_segment(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """VAR must never create lag adjacency across disconnected time segments."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = _write_two_segment_gap_fixture(mock_prelim_root)
+
+    captured = []
+
+    class CaptureVAR:
+        def __init__(self, endog):
+            captured.append(np.asarray(endog, dtype=float))
+            # Stop after observing the model input. Production catches
+            # estimator failures and records MODEL_INVALID.
+            raise RuntimeError("intentional VAR capture stop")
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        CaptureVAR,
+    )
+
+    # Avoid performing a real Johansen estimate after the VAR capture.
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("intentional Johansen stop")),
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(captured) == 1
+
+    actual = captured[0]
+
+    cb = df["cb_mid"].to_numpy()
+    kr = df["kr_mid"].to_numpy()
+
+    # Rows 10..29 form the unique longest level segment.
+    # Its exact 100 ms returns are anchors 10..28 -> 19 returns.
+    expected = np.column_stack(
+        (
+            np.diff(np.log(cb[10:])),
+            np.diff(np.log(kr[10:])),
+        )
+    )
+
+    assert expected.shape == (19, 2)
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(
+        actual,
+        expected,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_johansen_uses_longest_contiguous_level_segment(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Johansen/VECM levels must not be compressed across a timestamp gap."""
+
+    config_text = config_path.read_text().replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = _write_two_segment_gap_fixture(mock_prelim_root)
+
+    # VAR is irrelevant to this test. Stop it immediately.
+    class StopVAR:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("intentional VAR stop")
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        StopVAR,
+    )
+
+    captured = []
+
+    def capture_johansen(endog, *args, **kwargs):
+        captured.append(np.asarray(endog, dtype=float))
+        # Stop after observing the Johansen input.
+        raise RuntimeError("intentional Johansen capture stop")
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        capture_johansen,
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(captured) == 1
+
+    actual = captured[0]
+
+    cb = df["cb_mid"].to_numpy()
+    kr = df["kr_mid"].to_numpy()
+
+    # The post-gap run is the unique longest contiguous level segment:
+    # rows 10..29 inclusive -> 20 observations.
+    expected = np.column_stack(
+        (
+            np.log(cb[10:]),
+            np.log(kr[10:]),
+        )
+    )
+
+    assert expected.shape == (20, 2)
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(
+        actual,
+        expected,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_minimum_observation_gate_uses_longest_contiguous_return_segment(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Disconnected valid returns must not jointly satisfy the model sample gate."""
+
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        "minimum_effective_observations = 10",
+        "minimum_effective_observations = 15",
+        1,
+    )
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    # Two 11-level segments separated by a gap.
+    # Each segment supplies 10 valid 100 ms returns.
+    # Total valid returns = 20, but longest contiguous return run = 10.
+    n = 22
+    timestamps = []
+    current_t = 1_000_000_000
+
+    for i in range(n):
+        if i == 11:
+            current_t += 500_000_000
+        else:
+            current_t += 100_000_000
+        timestamps.append(current_t)
+
+    idx = np.arange(n, dtype=float)
+
+    df = pl.DataFrame(
+        {
+            "campaign_attempt_id": ["A"] * n,
+            "anchor_timestamp_utc": timestamps,
+            "cb_mid": 100.0 + 0.1 * idx + 0.003 * idx**2,
+            "kr_mid": 101.0 + 0.08 * idx + 0.004 * idx**2,
+            "is_rejected": [False] * n,
+        }
+    )
+
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    class VARMustNotRun:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError(
+                "VAR must not run when the longest contiguous "
+                "return segment is below minimum observations."
+            )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.VAR",
+        VARMustNotRun,
+    )
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    series = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "series_diagnostics.parquet"
+    ).row(0, named=True)
+
+    # Preserve the descriptive total of individually valid returns.
+    assert series["usable_return_pairs"] == 20
+
+    # But model eligibility is based on the contiguous estimation sample.
+    assert series["status"] == "INSUFFICIENT_SAMPLE"
+    assert series["insufficiency_reason"] == "Longest contiguous return segment below min obs"
+
+    robustness = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "robustness_results.parquet"
+    )
+
+    var_row = robustness.filter(
+        (pl.col("configuration_id") == "baseline") & (pl.col("metric") == "VAR_STABILITY")
+    ).row(0, named=True)
+
+    assert var_row["effective_sample_count"] == 10
+    assert var_row["status"] == "NOT_ESTIMABLE"

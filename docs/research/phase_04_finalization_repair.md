@@ -57,6 +57,30 @@ The underlying final 10-session normalized dataset remains valid.
 No statistical threshold will be relaxed to obtain significance or increase
 the number of usable sessions.
 
+### Contiguous-segment estimation policy
+
+Phase 4C time-series estimators must not create artificial temporal
+adjacency by concatenating observations across synchronization gaps,
+rejected support, or missing return endpoints.
+
+For each attempt and robustness configuration:
+
+- descriptive `usable_return_pairs` continues to count all individually
+  valid return observations;
+- return-based time-series models use the earliest longest consecutive
+  run of jointly valid Coinbase and Kraken returns;
+- Johansen and VECM estimation use the earliest longest timestamp-contiguous
+  level segment defined by the frozen Phase 4C gap rule;
+- the minimum effective observation threshold is evaluated against the
+  actual contiguous model sample rather than the sum of disconnected
+  valid observations;
+- ties between equally long segments are resolved deterministically by
+  selecting the earliest segment.
+
+This policy does not alter the frozen sampling intervals, return horizons,
+gap threshold, minimum observation threshold, lag-selection rules, or
+statistical significance thresholds.
+
 ### VECM deterministic-term interpretation
 
 The frozen Johansen specification remains `johansen_det_order = 0`. For

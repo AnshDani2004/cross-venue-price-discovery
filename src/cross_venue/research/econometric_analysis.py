@@ -219,6 +219,66 @@ def _hasbrouck_information_share_bounds(
     )
 
 
+def _longest_true_run(mask: np.ndarray) -> slice:
+    """Return the earliest longest consecutive True run in a boolean mask."""
+
+    values = np.asarray(mask, dtype=bool).reshape(-1)
+
+    best_start = 0
+    best_end = 0
+    current_start = 0
+
+    for index, is_valid in enumerate(values):
+        if not is_valid:
+            current_start = index + 1
+            continue
+
+        current_end = index + 1
+        if current_end - current_start > best_end - best_start:
+            best_start = current_start
+            best_end = current_end
+
+    return slice(best_start, best_end)
+
+
+def _longest_contiguous_level_slice(
+    gaps: np.ndarray,
+    observation_count: int,
+) -> slice:
+    """Return the earliest longest level segment separated by gap boundaries."""
+
+    if observation_count <= 0:
+        return slice(0, 0)
+
+    gap_flags = np.asarray(gaps, dtype=bool).reshape(-1)
+    if len(gap_flags) != observation_count - 1:
+        raise ValueError(
+            "Level gap vector must contain one boundary flag per adjacent observation pair."
+        )
+
+    best_start = 0
+    best_end = 1
+    current_start = 0
+
+    for boundary_index, is_gap in enumerate(gap_flags):
+        if not is_gap:
+            continue
+
+        current_end = boundary_index + 1
+        if current_end - current_start > best_end - best_start:
+            best_start = current_start
+            best_end = current_end
+
+        current_start = boundary_index + 1
+
+    current_end = observation_count
+    if current_end - current_start > best_end - best_start:
+        best_start = current_start
+        best_end = current_end
+
+    return slice(best_start, best_end)
+
+
 def analyze_econometric_price_discovery(
     dataset_root: Path,
     validation_report_path: Path,
@@ -595,7 +655,13 @@ def analyze_econometric_price_discovery(
             valid_mask = np.isfinite(cb_ret) & np.isfinite(kr_ret)
             usable = int(np.sum(valid_mask))
 
-            status = "COMPUTED" if usable >= min_obs else "INSUFFICIENT_SAMPLE"
+            # Model estimators must never create artificial lag adjacency
+            # by concatenating valid returns across invalid/missing support.
+            # Select one deterministic contiguous estimation segment.
+            return_segment = _longest_true_run(valid_mask)
+            model_usable = return_segment.stop - return_segment.start
+
+            status = "COMPUTED" if model_usable >= min_obs else "INSUFFICIENT_SAMPLE"
 
             if cfg_id == "baseline":
                 series_diag_rows.append(
@@ -614,7 +680,11 @@ def analyze_econometric_price_discovery(
                         "effective_duration": effective_duration,
                         "missing_share": float(gap_count / len(dt)) if len(dt) > 0 else 0.0,
                         "status": status,
-                        "insufficiency_reason": None if status == "COMPUTED" else "Below min obs",
+                        "insufficiency_reason": (
+                            None
+                            if status == "COMPUTED"
+                            else "Longest contiguous return segment below min obs"
+                        ),
                     }
                 )
 
@@ -629,17 +699,17 @@ def analyze_econometric_price_discovery(
                         "max_var_lag": config["var_specification"]["max_var_lag"],
                         "trim_policy": eff_trim,
                         "ordering": eff_ordering,
-                        "effective_sample_count": usable,
+                        "effective_sample_count": model_usable,
                         "metric": "VAR_STABILITY",
                         "value": None,
                         "status": "NOT_ESTIMABLE",
-                        "insufficiency_reason": "Below min obs",
+                        "insufficiency_reason": ("Longest contiguous return segment below min obs"),
                     }
                 )
                 continue
 
-            cb_ret_c = cb_ret[valid_mask]
-            kr_ret_c = kr_ret[valid_mask]
+            cb_ret_c = cb_ret[return_segment]
+            kr_ret_c = kr_ret[return_segment]
 
             if cfg_id == "baseline":
                 for name, series in [("coinbase_return", cb_ret_c), ("kraken_return", kr_ret_c)]:
@@ -694,7 +764,7 @@ def analyze_econometric_price_discovery(
                             "hqic": None,
                             "coefficients": None,
                             "standard_errors": None,
-                            "sample_count": usable,
+                            "sample_count": model_usable,
                             "fit_status": "MODEL_INVALID",
                             "is_stable": None,
                             "roots": None,
@@ -711,7 +781,7 @@ def analyze_econometric_price_discovery(
                         "max_var_lag": config["var_specification"]["max_var_lag"],
                         "trim_policy": eff_trim,
                         "ordering": eff_ordering,
-                        "effective_sample_count": usable,
+                        "effective_sample_count": model_usable,
                         "metric": "VAR_STABILITY",
                         "value": None,
                         "status": "NOT_ESTIMABLE",
@@ -811,7 +881,7 @@ def analyze_econometric_price_discovery(
                             "hqic": None,
                             "coefficients": None,
                             "standard_errors": None,
-                            "sample_count": usable,
+                            "sample_count": model_usable,
                             "fit_status": "MODEL_INVALID",
                             "is_stable": None,
                             "roots": None,
@@ -820,11 +890,19 @@ def analyze_econometric_price_discovery(
                     )
 
             # Cointegration
-            # The level-series gap policy is retained here; segment-aware
-            # cointegration handling is audited separately.
-            c_mask = np.ones(len(log_cb), dtype=bool)
-            c_mask[1:][gaps] = False
-            level_data = np.column_stack((log_cb[c_mask], log_kr[c_mask]))
+            # Johansen/VECM requires genuine time-series adjacency. Use one
+            # deterministic contiguous level segment rather than deleting
+            # gap-boundary observations and concatenating both sides.
+            level_segment = _longest_contiguous_level_slice(
+                gaps,
+                len(log_cb),
+            )
+            level_data = np.column_stack(
+                (
+                    log_cb[level_segment],
+                    log_kr[level_segment],
+                )
+            )
 
             det_order = int(config["cointegration"]["johansen_det_order"])
             k_diff = int(config["cointegration"]["johansen_k_ar_diff"])
