@@ -27,7 +27,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_package_import_and_version() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "1.0.0"
 
 
 def test_cli_help_exits_successfully() -> None:

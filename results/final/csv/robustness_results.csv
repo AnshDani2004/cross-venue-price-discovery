@@ -1,0 +1,78 @@
+configuration_id,scope,campaign_attempt_id,sampling_interval_ms,return_horizon_ms,max_var_lag,trim_policy,ordering,effective_sample_count,contributing_attempt_count,metric,value,status,insufficiency_reason
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,100,100,10,baseline,coinbase_first,9951,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,100,100,10,baseline,coinbase_first,245,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,100,100,10,baseline,coinbase_first,9454,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,100,100,10,baseline,coinbase_first,12503,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,100,100,10,baseline,coinbase_first,11081,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,100,100,10,baseline,coinbase_first,10672,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,100,100,10,baseline,coinbase_first,11350,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,100,100,10,baseline,coinbase_first,10573,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,100,100,10,baseline,coinbase_first,7001,,VAR_STABILITY,1.0,COMPUTED,
+baseline,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,100,100,10,baseline,coinbase_first,10219,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,250,100,10,baseline,coinbase_first,231,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,250,100,10,baseline,coinbase_first,153,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,250,100,10,baseline,coinbase_first,222,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,250,100,10,baseline,coinbase_first,5001,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,250,100,10,baseline,coinbase_first,4441,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,250,100,10,baseline,coinbase_first,4275,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,250,100,10,baseline,coinbase_first,4546,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,250,100,10,baseline,coinbase_first,4231,,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,250,100,10,baseline,coinbase_first,177,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,250,100,10,baseline,coinbase_first,4085,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,500,100,10,baseline,coinbase_first,137,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,500,100,10,baseline,coinbase_first,122,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,500,100,10,baseline,coinbase_first,195,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,500,100,10,baseline,coinbase_first,2500,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,500,100,10,baseline,coinbase_first,2221,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,500,100,10,baseline,coinbase_first,2134,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,500,100,10,baseline,coinbase_first,2268,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,500,100,10,baseline,coinbase_first,2113,,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,500,100,10,baseline,coinbase_first,192,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+sampling_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,500,100,10,baseline,coinbase_first,295,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,100,250,10,baseline,coinbase_first,9696,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,100,250,10,baseline,coinbase_first,244,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,100,250,10,baseline,coinbase_first,9102,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,100,250,10,baseline,coinbase_first,12493,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,100,250,10,baseline,coinbase_first,10907,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,100,250,10,baseline,coinbase_first,10461,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,100,250,10,baseline,coinbase_first,11186,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,100,250,10,baseline,coinbase_first,10373,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,100,250,10,baseline,coinbase_first,6650,,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,100,250,10,baseline,coinbase_first,10018,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,100,500,10,baseline,coinbase_first,9308,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,100,500,10,baseline,coinbase_first,241,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,100,500,10,baseline,coinbase_first,8590,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,100,500,10,baseline,coinbase_first,12475,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,100,500,10,baseline,coinbase_first,10613,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,100,500,10,baseline,coinbase_first,10114,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,100,500,10,baseline,coinbase_first,10926,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,100,500,10,baseline,coinbase_first,10031,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,100,500,10,baseline,coinbase_first,6086,,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,100,500,10,baseline,coinbase_first,9674,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,100,100,10,no_additional_trim,coinbase_first,15142,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,100,100,10,no_additional_trim,coinbase_first,245,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,100,100,10,no_additional_trim,coinbase_first,13651,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,100,100,10,no_additional_trim,coinbase_first,18462,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,100,100,10,no_additional_trim,coinbase_first,16125,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,100,100,10,no_additional_trim,coinbase_first,16286,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,100,100,10,no_additional_trim,coinbase_first,16811,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,100,100,10,no_additional_trim,coinbase_first,15977,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,100,100,10,no_additional_trim,coinbase_first,10539,,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,100,100,10,no_additional_trim,coinbase_first,15461,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P02-001,100,100,10,baseline,kraken_first,9951,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P03-001,100,100,10,baseline,kraken_first,245,,VAR_STABILITY,,NOT_ESTIMABLE,Longest contiguous return segment below min obs
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P09-001,100,100,10,baseline,kraken_first,9454,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-P10-001,100,100,10,baseline,kraken_first,12503,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R01-001,100,100,10,baseline,kraken_first,11081,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R02-001,100,100,10,baseline,kraken_first,10672,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-07-31-v1-R05-001,100,100,10,baseline,kraken_first,11350,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001,100,100,10,baseline,kraken_first,10573,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001,100,100,10,baseline,kraken_first,7001,,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,per_attempt,btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001,100,100,10,baseline,kraken_first,10219,,VAR_STABILITY,1.0,COMPUTED,
+baseline,aggregate,,100,100,10,baseline,coinbase_first,,9,VAR_STABILITY,1.0,COMPUTED,
+horizon_250ms,aggregate,,100,250,10,baseline,coinbase_first,,9,VAR_STABILITY,1.0,COMPUTED,
+horizon_500ms,aggregate,,100,500,10,baseline,coinbase_first,,9,VAR_STABILITY,1.0,COMPUTED,
+kraken_first,aggregate,,100,100,10,baseline,kraken_first,,9,VAR_STABILITY,1.0,COMPUTED,
+no_additional_trim,aggregate,,100,100,10,no_additional_trim,coinbase_first,,9,VAR_STABILITY,1.0,COMPUTED,
+sampling_250ms,aggregate,,250,100,10,baseline,coinbase_first,,6,VAR_STABILITY,1.0,COMPUTED,
+sampling_500ms,aggregate,,500,100,10,baseline,coinbase_first,,5,VAR_STABILITY,1.0,COMPUTED,

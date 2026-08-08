@@ -85,9 +85,7 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
         raise ResearchError("Source output manifest must be a list")
 
     manifest_paths = {
-        str(entry.get("relative_path"))
-        for entry in manifest
-        if isinstance(entry, dict)
+        str(entry.get("relative_path")) for entry in manifest if isinstance(entry, dict)
     }
 
     required_source_artifacts = {
@@ -102,44 +100,31 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
         "econometric_price_discovery_report.json",
     }
 
-    missing_from_manifest = sorted(
-        required_source_artifacts - manifest_paths
-    )
+    missing_from_manifest = sorted(required_source_artifacts - manifest_paths)
     if missing_from_manifest:
         raise ResearchError(
-            "Source manifest missing required artifacts: "
-            + ", ".join(missing_from_manifest)
+            "Source manifest missing required artifacts: " + ", ".join(missing_from_manifest)
         )
 
     # Verify every manifest-bound artifact before reading it.
     for entry in manifest:
         if not isinstance(entry, dict):
-            raise ResearchError(
-                "Invalid source manifest entry"
-            )
+            raise ResearchError("Invalid source manifest entry")
 
         rel = entry.get("relative_path")
         expected_hash = entry.get("sha256")
 
         if not isinstance(rel, str):
-            raise ResearchError(
-                "Source manifest entry missing relative_path"
-            )
+            raise ResearchError("Source manifest entry missing relative_path")
         if not isinstance(expected_hash, str):
-            raise ResearchError(
-                f"Source manifest entry missing sha256: {rel}"
-            )
+            raise ResearchError(f"Source manifest entry missing sha256: {rel}")
 
         if rel != "output_manifest.json":
             phys = econometric_output_root / rel
             if not phys.exists():
-                raise ResearchError(
-                    f"Missing required artifact: {rel}"
-                )
+                raise ResearchError(f"Missing required artifact: {rel}")
             if _hash_file(phys) != expected_hash:
-                raise ResearchError(
-                    f"Corrupt artifact hash: {rel}"
-                )
+                raise ResearchError(f"Corrupt artifact hash: {rel}")
 
     report_path = econometric_output_root / "econometric_price_discovery_report.json"
     if not report_path.exists():
@@ -156,21 +141,11 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
         False,
     )
 
-    if (
-        source_analysis_mode == "FINAL"
-        and source_final_inference is not True
-    ):
-        raise ResearchError(
-            "Source report is FINAL but final inference is not permitted"
-        )
+    if source_analysis_mode == "FINAL" and source_final_inference is not True:
+        raise ResearchError("Source report is FINAL but final inference is not permitted")
 
-    if (
-        source_analysis_mode != "FINAL"
-        and source_final_inference is True
-    ):
-        raise ResearchError(
-            "Source report permits final inference outside FINAL mode"
-        )
+    if source_analysis_mode != "FINAL" and source_final_inference is True:
+        raise ResearchError("Source report permits final inference outside FINAL mode")
 
     tables_dir = output_root / "tables"
     figures_dir = output_root / "figures"
@@ -190,22 +165,16 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
             econometric_output_root / "aggregate_inference.parquet"
         )
 
-        raw_attempt_ids = coint_df[
-            "campaign_attempt_id"
-        ].to_list()
+        raw_attempt_ids = coint_df["campaign_attempt_id"].to_list()
 
         if len(raw_attempt_ids) != len(set(raw_attempt_ids)):
-            raise ResearchError(
-                "Duplicate semantic identities detected in attempt IDs"
-            )
+            raise ResearchError("Duplicate semantic identities detected in attempt IDs")
 
         attempt_ids = sorted(raw_attempt_ids)
     except ResearchError:
         raise
     except Exception as exc:
-        raise ResearchError(
-            f"Failed to read Parquet artifacts: {exc}"
-        ) from exc
+        raise ResearchError(f"Failed to read Parquet artifacts: {exc}") from exc
 
     summary_rows = []
     for att in attempt_ids:
@@ -400,9 +369,7 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
     pd_df.write_parquet(tables_dir / "price_discovery_results.parquet")
     pred_df.write_parquet(tables_dir / "predictive_regressions.parquet")
     rob_df.write_parquet(tables_dir / "robustness_results.parquet")
-    aggregate_inference_df.write_parquet(
-        tables_dir / "aggregate_inference.parquet"
-    )
+    aggregate_inference_df.write_parquet(tables_dir / "aggregate_inference.parquet")
 
     _generate_markdown_report(
         output_root / "econometric_results_report.md",
@@ -411,12 +378,8 @@ def render_econometric_results(econometric_output_root: Path, output_root: Path)
         aggregate_inference_df,
     )
 
-    generated_tables = sorted(
-        f.name for f in tables_dir.iterdir() if f.is_file()
-    )
-    generated_figures = sorted(
-        f.name for f in figures_dir.iterdir() if f.is_file()
-    )
+    generated_tables = sorted(f.name for f in tables_dir.iterdir() if f.is_file())
+    generated_figures = sorted(f.name for f in figures_dir.iterdir() if f.is_file())
 
     file_hashes: dict[str, str] = {}
     for t in generated_tables:
@@ -501,12 +464,8 @@ def _render_irf_figure(irf_df: pl.DataFrame, out_path: Path) -> None:
         plt.close()
         return
 
-    attempts = sorted(
-        set(valid["campaign_attempt_id"].to_list())
-    )
-    orderings = sorted(
-        set(valid["ordering"].to_list())
-    )
+    attempts = sorted(set(valid["campaign_attempt_id"].to_list()))
+    orderings = sorted(set(valid["ordering"].to_list()))
 
     fig, axes = plt.subplots(
         1,
@@ -518,26 +477,15 @@ def _render_irf_figure(irf_df: pl.DataFrame, out_path: Path) -> None:
     for col_idx, ordering in enumerate(orderings):
         ax = axes[0, col_idx]
 
-        subset = valid.filter(
-            pl.col("ordering") == ordering
-        )
+        subset = valid.filter(pl.col("ordering") == ordering)
 
         for att in attempts:
-            att_sub = (
-                subset.filter(
-                    pl.col("campaign_attempt_id") == att
-                )
-                .sort("horizon")
-            )
+            att_sub = subset.filter(pl.col("campaign_attempt_id") == att).sort("horizon")
 
             if att_sub.height == 0:
                 continue
 
-            short_att = (
-                "-".join(att.split("-")[-3:])
-                if len(att.split("-")) >= 3
-                else att
-            )
+            short_att = "-".join(att.split("-")[-3:]) if len(att.split("-")) >= 3 else att
 
             ax.plot(
                 att_sub["horizon"],
@@ -547,10 +495,7 @@ def _render_irf_figure(irf_df: pl.DataFrame, out_path: Path) -> None:
                 alpha=0.7,
             )
 
-        ax.set_title(
-            "Coinbase shock -> Kraken response "
-            f"(ordering: {ordering})"
-        )
+        ax.set_title(f"Coinbase shock -> Kraken response (ordering: {ordering})")
         ax.set_xlabel("Horizon")
         ax.set_ylabel("Cumulative response")
 
@@ -601,10 +546,7 @@ def _render_robustness_figure(
     out_path: Path,
 ) -> None:
     """Render per-attempt VAR-stability robustness results."""
-    valid = rob_df.filter(
-        (pl.col("status") == "COMPUTED")
-        & (pl.col("scope") == "per_attempt")
-    )
+    valid = rob_df.filter((pl.col("status") == "COMPUTED") & (pl.col("scope") == "per_attempt"))
 
     if valid.height == 0:
         fig, ax = plt.subplots(figsize=(8, 4))
@@ -621,12 +563,8 @@ def _render_robustness_figure(
         plt.close(fig)
         return
 
-    cfgs = sorted(
-        set(valid["configuration_id"].to_list())
-    )
-    metrics = sorted(
-        set(valid["metric"].to_list())
-    )
+    cfgs = sorted(set(valid["configuration_id"].to_list()))
+    metrics = sorted(set(valid["metric"].to_list()))
 
     if not metrics:
         fig, ax = plt.subplots(figsize=(8, 4))
@@ -652,14 +590,10 @@ def _render_robustness_figure(
 
     for metric_idx, metric in enumerate(metrics):
         ax = axes[metric_idx, 0]
-        metric_rows = valid.filter(
-            pl.col("metric") == metric
-        )
+        metric_rows = valid.filter(pl.col("metric") == metric)
 
         for config_idx, config_id in enumerate(cfgs):
-            config_rows = metric_rows.filter(
-                pl.col("configuration_id") == config_id
-            )
+            config_rows = metric_rows.filter(pl.col("configuration_id") == config_id)
             values = config_rows["value"].to_list()
 
             if values:
@@ -676,9 +610,7 @@ def _render_robustness_figure(
             ha="right",
         )
         ax.set_ylabel(metric)
-        ax.set_title(
-            f"VAR Stability Robustness: {metric}"
-        )
+        ax.set_title(f"VAR Stability Robustness: {metric}")
 
     fig.tight_layout()
     fig.savefig(out_path)
@@ -692,10 +624,7 @@ def _generate_markdown_report(
     aggregate_inference_df: pl.DataFrame,
 ) -> None:
     """Render a deterministic report without overstating statistical evidence."""
-    is_dev = (
-        source_report.get("analysis_mode", "DEVELOPMENT")
-        != "FINAL"
-    )
+    is_dev = source_report.get("analysis_mode", "DEVELOPMENT") != "FINAL"
 
     def _aggregate_row(
         analysis: str,
@@ -723,10 +652,7 @@ def _generate_markdown_report(
                 or not math.isfinite(float(p_value))
                 or not 0.0 <= float(p_value) <= 1.0
             ):
-                raise ResearchError(
-                    "Invalid aggregate p-value for "
-                    f"{analysis} / {direction}"
-                )
+                raise ResearchError(f"Invalid aggregate p-value for {analysis} / {direction}")
 
         return row
 
@@ -762,19 +688,10 @@ def _generate_markdown_report(
 
         if is_dev:
             f.write("> [!WARNING]\n")
-            f.write(
-                "> DEVELOPMENT / PRELIMINARY RESULTS — "
-                "FINAL INFERENCE NOT PERMITTED\n"
-            )
+            f.write("> DEVELOPMENT / PRELIMINARY RESULTS — FINAL INFERENCE NOT PERMITTED\n")
             f.write("> \n")
-            f.write(
-                "> The dataset does not satisfy final composite "
-                "requirements.\n"
-            )
-            f.write(
-                "> This run validates the econometric analysis "
-                "machinery only.\n"
-            )
+            f.write("> The dataset does not satisfy final composite requirements.\n")
+            f.write("> This run validates the econometric analysis machinery only.\n")
             f.write(
                 "> Final empirical, causal, VAR, Granger, or "
                 "price-discovery conclusions are prohibited.\n\n"
@@ -794,22 +711,10 @@ def _generate_markdown_report(
                 "and final inference is permitted.\n\n"
             )
 
-        f.write(
-            "- Dataset Validation ID: "
-            f"`{source_report.get('dataset_validation_id')}`\n"
-        )
-        f.write(
-            "- Source analysis result ID: "
-            f"`{source_report.get('analysis_result_id')}`\n"
-        )
-        f.write(
-            "- Total accepted attempts: "
-            f"{source_report.get('total_attempt_count')}\n"
-        )
-        f.write(
-            "- Econometrically usable attempts: "
-            f"{len(attempt_ids)}\n"
-        )
+        f.write(f"- Dataset Validation ID: `{source_report.get('dataset_validation_id')}`\n")
+        f.write(f"- Source analysis result ID: `{source_report.get('analysis_result_id')}`\n")
+        f.write(f"- Total accepted attempts: {source_report.get('total_attempt_count')}\n")
+        f.write(f"- Econometrically usable attempts: {len(attempt_ids)}\n")
         f.write(
             "- Authoritative paired overlap, seconds: "
             f"{source_report.get('authoritative_paired_overlap_seconds')}\n"
@@ -828,13 +733,8 @@ def _generate_markdown_report(
             "not structural or economic causation.\n\n"
         )
 
-        f.write(
-            "| Analysis | Direction | Contributing attempts | "
-            "Combined p-value | Status |\n"
-        )
-        f.write(
-            "|---|---|---:|---:|---|\n"
-        )
+        f.write("| Analysis | Direction | Contributing attempts | Combined p-value | Status |\n")
+        f.write("|---|---|---:|---:|---|\n")
 
         aggregate_rows = [
             (
@@ -876,9 +776,7 @@ def _generate_markdown_report(
         )
 
         f.write("![Granger Causality]")
-        f.write(
-            "(figures/granger_directional_predictability.png)\n\n"
-        )
+        f.write("(figures/granger_directional_predictability.png)\n\n")
 
         f.write("## 3. VAR and impulse-response diagnostics\n\n")
         f.write(
@@ -886,9 +784,7 @@ def _generate_markdown_report(
             "Coinbase shock followed by the Kraken response and "
             "reports that path under both Cholesky orderings.\n\n"
         )
-        f.write(
-            "![Impulse Responses](figures/impulse_responses.png)\n\n"
-        )
+        f.write("![Impulse Responses](figures/impulse_responses.png)\n\n")
 
         f.write("## 4. Cointegration and VECM support\n\n")
         f.write(
@@ -913,11 +809,8 @@ def _generate_markdown_report(
             "as Cholesky-ordering bounds; no methodology-frozen "
             "point estimate is inserted between those bounds.\n\n"
         )
-        f.write(
-            "![Price Discovery]")
-        f.write(
-            "(figures/price_discovery_by_attempt.png)\n\n"
-        )
+        f.write("![Price Discovery]")
+        f.write("(figures/price_discovery_by_attempt.png)\n\n")
 
         f.write("## 6. Predictive regressions\n\n")
         f.write(
@@ -938,9 +831,7 @@ def _generate_markdown_report(
             "aggregate rows remain available in the underlying "
             "robustness table.\n\n"
         )
-        f.write(
-            "![Robustness](figures/robustness_summary.png)\n\n"
-        )
+        f.write("![Robustness](figures/robustness_summary.png)\n\n")
 
         f.write("## 8. Limitations\n\n")
         f.write(
@@ -955,8 +846,7 @@ def _generate_markdown_report(
 
         if is_dev:
             f.write(
-                "These DEVELOPMENT outputs must not be interpreted "
-                "as final empirical conclusions."
+                "These DEVELOPMENT outputs must not be interpreted as final empirical conclusions."
             )
 
         f.write("\n")

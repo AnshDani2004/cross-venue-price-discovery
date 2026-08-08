@@ -250,9 +250,7 @@ def test_successful_reporting(mock_econometric_output, tmp_path) -> None:
     assert (out / "tables/aggregate_inference.parquet").exists()
     assert (out / "figures/price_discovery_by_attempt.png").exists()
 
-    summary = pl.read_parquet(
-        out / "tables/attempt_summary.parquet"
-    )
+    summary = pl.read_parquet(out / "tables/attempt_summary.parquet")
 
     assert summary["cb_kr_granger_stat"].drop_nulls().len() == 2
     assert summary["kr_cb_granger_stat"].drop_nulls().len() == 2
@@ -278,9 +276,7 @@ def test_session_date_not_inferred_from_attempt_suffix(
     out = tmp_path / "out"
     render_econometric_results(mock_econometric_output, out)
 
-    df = pl.read_parquet(
-        out / "tables/attempt_summary.parquet"
-    )
+    df = pl.read_parquet(out / "tables/attempt_summary.parquet")
 
     assert df["session_date"].null_count() == 2
 
@@ -432,20 +428,16 @@ def test_cli_failure(mock_econometric_output, tmp_path) -> None:
     )
     assert cli.render_econometric_results_cmd(args) == 1
 
+
 def test_required_artifact_must_be_manifest_bound(
     mock_econometric_output,
     tmp_path,
 ) -> None:
-    manifest_path = (
-        mock_econometric_output / "output_manifest.json"
-    )
+    manifest_path = mock_econometric_output / "output_manifest.json"
     manifest = json.loads(manifest_path.read_text())
 
     manifest = [
-        entry
-        for entry in manifest
-        if entry["relative_path"]
-        != "aggregate_inference.parquet"
+        entry for entry in manifest if entry["relative_path"] != "aggregate_inference.parquet"
     ]
     manifest_path.write_text(json.dumps(manifest))
 
@@ -465,10 +457,7 @@ def test_duplicate_attempt_identity_rejected(
 ) -> None:
     import hashlib
 
-    artifact = (
-        mock_econometric_output
-        / "cointegration_diagnostics.parquet"
-    )
+    artifact = mock_econometric_output / "cointegration_diagnostics.parquet"
 
     df = pl.read_parquet(artifact)
     duplicated = pl.concat(
@@ -477,20 +466,13 @@ def test_duplicate_attempt_identity_rejected(
     )
     duplicated.write_parquet(artifact)
 
-    manifest_path = (
-        mock_econometric_output / "output_manifest.json"
-    )
+    manifest_path = mock_econometric_output / "output_manifest.json"
     manifest = json.loads(manifest_path.read_text())
 
-    digest = hashlib.sha256(
-        artifact.read_bytes()
-    ).hexdigest()
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
 
     for entry in manifest:
-        if (
-            entry["relative_path"]
-            == "cointegration_diagnostics.parquet"
-        ):
+        if entry["relative_path"] == "cointegration_diagnostics.parquet":
             entry["sha256"] = digest
 
     manifest_path.write_text(json.dumps(manifest))
@@ -511,40 +493,27 @@ def test_final_mode_requires_final_inference_permission(
 ) -> None:
     import hashlib
 
-    report_path = (
-        mock_econometric_output
-        / "econometric_price_discovery_report.json"
-    )
+    report_path = mock_econometric_output / "econometric_price_discovery_report.json"
 
     report = json.loads(report_path.read_text())
     report["analysis_mode"] = "FINAL"
     report["final_inference_permitted"] = False
     report_path.write_text(json.dumps(report))
 
-    manifest_path = (
-        mock_econometric_output / "output_manifest.json"
-    )
+    manifest_path = mock_econometric_output / "output_manifest.json"
     manifest = json.loads(manifest_path.read_text())
 
-    digest = hashlib.sha256(
-        report_path.read_bytes()
-    ).hexdigest()
+    digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
 
     for entry in manifest:
-        if (
-            entry["relative_path"]
-            == "econometric_price_discovery_report.json"
-        ):
+        if entry["relative_path"] == "econometric_price_discovery_report.json":
             entry["sha256"] = digest
 
     manifest_path.write_text(json.dumps(manifest))
 
     with pytest.raises(
         ResearchError,
-        match=(
-            "Source report is FINAL but final inference "
-            "is not permitted"
-        ),
+        match=("Source report is FINAL but final inference is not permitted"),
     ):
         render_econometric_results(
             mock_econometric_output,

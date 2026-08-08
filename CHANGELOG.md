@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No unreleased changes.
+
+## 1.0.0 - 2026-08-08
+
 - Initialize Phase 00 project foundation.
 - Add Phase 01 market-foundation assumptions and hypothesis register.
 - Remediate Phase 0 foundation gaps with CLI, project settings, structured logging,

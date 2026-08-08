@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software or its reported results, please cite it using this metadata."
+title: "BTC/USD Cross-Venue Price Discovery: Coinbase vs Kraken"
+type: software
+authors:
+  - family-names: "Dani"
+    given-names: "Ansh Hemang"
+repository-code: "https://github.com/AnshDani2004/cross-venue-price-discovery"
+url: "https://github.com/AnshDani2004/cross-venue-price-discovery"
+license: "MIT"
+version: "1.0.0"
+date-released: "2026-08-08"
+keywords:
+  - "Bitcoin"
+  - "econometrics"
+  - "market microstructure"
+  - "price discovery"
+  - "quantitative finance"
+  - "cross-venue markets"
+abstract: >-
+  A reproducible empirical market-microstructure study of short-horizon
+  information transmission and long-run price discovery between Coinbase
+  and Kraken using synchronized BTC/USD public market data.

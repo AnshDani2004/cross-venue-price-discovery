@@ -1,0 +1,54 @@
+{
+  "reporting_id": "report-6442f4c6e7df6790",
+  "reporting_schema_version": "v1",
+  "source_analysis_result_id": "9b9a99c19105811c",
+  "source_config_hash": "f816fd0087e1baa551f390335d18c924cdfde5e866bbcf8e45e93075aabc0fa6",
+  "analysis_mode": "FINAL",
+  "final_inference_permitted": true,
+  "source_snapshot_id": "analysis-snapshot-10-session-v1-9ac4e58f7ae79db6",
+  "dataset_validation_id": "validation-report-f62c52f63e66d45b",
+  "ordered_attempt_ids": [
+    "btc-usd-coinbase-kraken-2026-07-31-v1-P02-001",
+    "btc-usd-coinbase-kraken-2026-07-31-v1-P09-001",
+    "btc-usd-coinbase-kraken-2026-07-31-v1-P10-001",
+    "btc-usd-coinbase-kraken-2026-07-31-v1-R01-001",
+    "btc-usd-coinbase-kraken-2026-07-31-v1-R02-001",
+    "btc-usd-coinbase-kraken-2026-07-31-v1-R05-001",
+    "btc-usd-coinbase-kraken-2026-08-05-followup-v1-F01-001",
+    "btc-usd-coinbase-kraken-2026-08-07-evening-followup-v1-F01-001",
+    "btc-usd-coinbase-kraken-2026-08-multiday-supplement-v1-P05-001"
+  ],
+  "generated_tables": [
+    "tables/aggregate_inference.parquet",
+    "tables/attempt_summary.md",
+    "tables/attempt_summary.parquet",
+    "tables/cointegration_results.parquet",
+    "tables/granger_results.parquet",
+    "tables/predictive_regressions.parquet",
+    "tables/price_discovery_results.parquet",
+    "tables/robustness_results.parquet"
+  ],
+  "generated_figures": [
+    "figures/granger_directional_predictability.png",
+    "figures/impulse_responses.png",
+    "figures/price_discovery_by_attempt.png",
+    "figures/robustness_summary.png"
+  ],
+  "generated_report": "econometric_results_report.md",
+  "file_hashes": {
+    "tables/aggregate_inference.parquet": "255d76e5d27d86952fefcfeb52531b616299e39c92ed37cc3b460755119ccc99",
+    "tables/attempt_summary.md": "996895c055b3db5e6d5ae66294f04c69f3f600c0d5f7859febe1458e909ff795",
+    "tables/attempt_summary.parquet": "e2674938188815f39392e91970477ac761158960d91c0fa13d525c983260e40e",
+    "tables/cointegration_results.parquet": "e999857d5d8531bf0a01418d484d8c9c7789c7562e029add4a87cba404bc1af8",
+    "tables/granger_results.parquet": "7d5ca2545f524b57e0f9d23a71e987222d9985219168cb127c0619687a696910",
+    "tables/predictive_regressions.parquet": "4ff5976f42c8ec33b77a78c3a06892ea9946e3f26deba489555b6882c8c95309",
+    "tables/price_discovery_results.parquet": "be0220c5576628417dcb21fb6fa571f47561fb22c81631b88517bacfda251c52",
+    "tables/robustness_results.parquet": "2494b79f40f487cc0500af419b837e682a266527ffdae2a3a9972ed8fae7cbaa",
+    "figures/granger_directional_predictability.png": "09102895f1dbfb154d25859d99c38a90b2febdaee2100130c808fcf3404c6893",
+    "figures/impulse_responses.png": "6e38d012346a1a6a48fb7fe4466eebbe81b9fa16130902c9b394ee13f11225c5",
+    "figures/price_discovery_by_attempt.png": "e0a984fae5f819392622acdccb638f38dce35e4bfe525767c7c05504e24aad50",
+    "figures/robustness_summary.png": "47e384f6d3214cdcc3c78df8e3231554e7f151f92fd56aee738afd024675763f",
+    "econometric_results_report.md": "eef3f8f67f7792c3b75dd3832572ac1e8de605033221327aa901e01abf8dc691"
+  },
+  "deterministic_content_hash": "6442f4c6e7df67902e9d5c4f71cefc1b41af084eb98059ece9ee09937e7bbdef"
+}

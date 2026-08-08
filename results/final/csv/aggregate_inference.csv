@@ -1,0 +1,5 @@
+analysis,specification_id,direction,scope,combination_method,p_value_source,contributing_attempt_count,fisher_statistic,degrees_of_freedom,combined_p_value,status,insufficiency_reason
+granger_causality,baseline,coinbase_predicts_kraken,aggregate,fisher,raw_p_value,9,1297.4772006592052,18,1.4217508180369821e-264,COMPUTED,
+granger_causality,baseline,kraken_predicts_coinbase,aggregate,fisher,raw_p_value,9,43.388567080834434,18,0.0007049905160783049,COMPUTED,
+predictive_regression,baseline,coinbase_predicts_kraken,aggregate,fisher,raw_p_value,9,114.63275406899724,18,4.2898968443903273e-16,COMPUTED,
+predictive_regression,baseline,kraken_predicts_coinbase,aggregate,fisher,raw_p_value,9,26.423704290352482,18,0.0904573758260595,COMPUTED,

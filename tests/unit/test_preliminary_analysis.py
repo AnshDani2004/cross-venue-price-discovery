@@ -629,11 +629,7 @@ def test_phase4b_persists_econometric_synchronization_support(
 ) -> None:
     """Phase 4B must persist exact grids required by downstream Phase 4C."""
 
-    val_path = (
-        mock_dataset_root
-        / "validation"
-        / "normalized_dataset_validation.json"
-    )
+    val_path = mock_dataset_root / "validation" / "normalized_dataset_validation.json"
 
     analyze_preliminary_price_discovery(
         mock_dataset_root,
@@ -653,34 +649,18 @@ def test_phase4b_persists_econometric_synchronization_support(
         "no_trim",
     }
 
-    fast = (
-        support
-        .filter(pl.col("configuration_id") == "faster_sampling")
-        .sort("anchor_timestamp_utc")
+    fast = support.filter(pl.col("configuration_id") == "faster_sampling").sort(
+        "anchor_timestamp_utc"
     )
-    no_trim = (
-        support
-        .filter(pl.col("configuration_id") == "no_trim")
-        .sort("anchor_timestamp_utc")
-    )
+    no_trim = support.filter(pl.col("configuration_id") == "no_trim").sort("anchor_timestamp_utc")
 
     assert fast.height > 1
     assert no_trim.height > 1
 
-    fast_dt = (
-        fast["anchor_timestamp_utc"]
-        .diff()
-        .drop_nulls()
-        .dt.total_microseconds()
-        / 1000.0
-    )
+    fast_dt = fast["anchor_timestamp_utc"].diff().drop_nulls().dt.total_microseconds() / 1000.0
 
     no_trim_dt = (
-        no_trim["anchor_timestamp_utc"]
-        .diff()
-        .drop_nulls()
-        .dt.total_microseconds()
-        / 1000.0
+        no_trim["anchor_timestamp_utc"].diff().drop_nulls().dt.total_microseconds() / 1000.0
     )
 
     assert set(fast_dt.unique().to_list()) == {50.0}

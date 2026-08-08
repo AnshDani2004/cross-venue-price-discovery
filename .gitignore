@@ -31,6 +31,8 @@ docs/interview_guide.md
 
 # Generated research artifacts and large data
 *.parquet
+# Preserve the tiny deterministic FINAL research bundle published with the repository.
+!results/final/generated/tables/*.parquet
 *.duckdb
 *.db
 models/
