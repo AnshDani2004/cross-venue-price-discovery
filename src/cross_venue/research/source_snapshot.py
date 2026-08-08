@@ -29,6 +29,7 @@ from cross_venue.campaigns.models import (
     CampaignConfig,
     CampaignRegistry,
     CampaignRole,
+    CampaignStatus,
     CompletionState,
     InclusionStatus,
     LedgerEvent,
@@ -1044,8 +1045,15 @@ def rebuild_registry_from_events(events: list[LedgerEvent]) -> CampaignRegistry:
         if completion_requirements.satisfied
         else CompletionState.UNSATISFIED
     )
+    # Mirror canonical logic from cross_venue.campaigns.completion.recalculate_registry
+    campaign_status = (
+        CampaignStatus.COMPLETE
+        if completion_status == CompletionState.SATISFIED
+        else CampaignStatus.IN_PROGRESS
+    )
     return registry.model_copy(
         update={
+            "campaign_status": campaign_status,
             "planned_slots": planned_slots,
             "attempts": attempts,
             "accepted_attempt_count": len(included_accepted),

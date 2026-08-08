@@ -783,3 +783,182 @@ def _model_hash(model: Any) -> str:
     import hashlib
 
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def test_rebuild_registry_from_events_status() -> None:
+    from datetime import UTC, datetime
+
+    from cross_venue.campaigns.models import (
+        AttemptStatus,
+        CampaignRegistry,
+        CampaignRole,
+        CampaignSlot,
+        CampaignStatus,
+        CompletionRequirements,
+        CompletionState,
+        InclusionStatus,
+        LedgerEvent,
+        LedgerEventType,
+        PlannedSlotState,
+        SlotStatus,
+        SlotType,
+        TimeBucket,
+    )
+    from cross_venue.research.source_snapshot import rebuild_registry_from_events
+
+    now = datetime.now(UTC)
+    slot = CampaignSlot(
+        slot_id="P01",
+        slot_type=SlotType.PRIMARY,
+        time_bucket=TimeBucket.MORNING,
+        planned_start_utc=now,
+        planned_start_local="2026-08-01 09:30:00",
+    )
+    registry = CampaignRegistry(
+        campaign_schema_version="3b-campaign-registry.1",
+        campaign_id="test-camp",
+        campaign_role=CampaignRole.MULTI_DAY_VALIDATION,
+        campaign_status=CampaignStatus.IN_PROGRESS,
+        campaign_config_path="configs/c.toml",
+        campaign_config_sha256="aaa",
+        quality_policy_version="1",
+        quality_policy_sha256="bbb",
+        runtime_git_commit="ccc",
+        runtime_working_tree_clean=True,
+        created_at=now,
+        updated_at=now,
+        instrument="BTC-USD",
+        venues=(Exchange.COINBASE, Exchange.KRAKEN),
+        timezone="America/New_York",
+        requested_duration_seconds=1800,
+        minimum_overlap_seconds_per_accepted_session=1800,
+        minimum_accepted_sessions=1,
+        minimum_total_accepted_overlap_seconds=1800,
+        minimum_calendar_dates=1,
+        minimum_time_buckets=1,
+        maximum_attempts=1,
+        planned_slots={"P01": PlannedSlotState(slot=slot, status=SlotStatus.PLANNED)},
+        attempts={},
+        completion_requirements=CompletionRequirements(
+            accepted_sessions=False,
+            accepted_overlap_seconds=False,
+            calendar_dates=False,
+            time_buckets=False,
+            policy_consistency=True,
+            runtime_consistency=True,
+            attempts_registered=False,
+            registry_and_ledger_valid=True,
+        ),
+        completion_status=CompletionState.UNSATISFIED,
+        ledger_sha256="ddd",
+    )
+    events = [
+        LedgerEvent(
+            event_index=0,
+            event_hash="hash0",
+            previous_event_hash="0000000000000000000000000000000000000000000000000000000000000000",
+            occurred_at=now,
+            event_type=LedgerEventType.CAMPAIGN_INITIALIZED,
+            campaign_id="test-camp",
+            payload={"registry": registry.model_dump(mode="json")},
+        ),
+        LedgerEvent(
+            event_index=1,
+            event_hash="hash1",
+            previous_event_hash="hash0",
+            occurred_at=now,
+            event_type=LedgerEventType.ATTEMPT_ACCEPTED,
+            campaign_id="test-camp",
+            slot_id="P01",
+            campaign_attempt_id="test-camp-P01-001",
+            payload={
+                "attempt": {
+                    "campaign_id": "test-camp",
+                    "slot_id": "P01",
+                    "campaign_attempt_id": "test-camp-P01-001",
+                    "attempt_number": 1,
+                    "slot_type": "PRIMARY",
+                    "requested_duration_seconds": 1800,
+                    "attempt_status": AttemptStatus.ACCEPTED.value,
+                    "inclusion_status": InclusionStatus.INCLUDED.value,
+                    "attempt_runtime_git_commit": "abcdef1",
+                    "planned_start_utc": now.isoformat(),
+                    "planned_start_local": "2026-08-01 09:30:00",
+                    "time_bucket": TimeBucket.MORNING.value,
+                    "paired_overlap_seconds": "1800.0",
+                    "validated_pair_manifest_id": "pair",
+                    "validated_pair_manifest_sha256": "sha",
+                    "coinbase_disposition": "ACCEPTED",
+                    "kraken_disposition": "ACCEPTED",
+                    "paired_disposition": "ACCEPTED",
+                    "coinbase_archive_valid": True,
+                    "kraken_archive_valid": True,
+                    "coinbase_stop_reason": "REQUESTED_DURATION_REACHED",
+                    "kraken_stop_reason": "REQUESTED_DURATION_REACHED",
+                    "promotion_dry_run_allowed": True,
+                }
+            },
+        ),
+    ]
+    rebuilt = rebuild_registry_from_events(events)
+    assert rebuilt.completion_status == CompletionState.SATISFIED
+    assert rebuilt.campaign_status == CampaignStatus.COMPLETE
+
+    # Test unsatisfied behavior
+    events_unsat = [
+        LedgerEvent(
+            event_index=0,
+            event_hash="hash0",
+            previous_event_hash="0000000000000000000000000000000000000000000000000000000000000000",
+            occurred_at=now,
+            event_type=LedgerEventType.CAMPAIGN_INITIALIZED,
+            campaign_id="test-camp",
+            payload={"registry": registry.model_dump(mode="json")},
+        ),
+        LedgerEvent(
+            event_index=1,
+            event_hash="hash1",
+            previous_event_hash="hash0",
+            occurred_at=now,
+            event_type=LedgerEventType.ATTEMPT_REJECTED,
+            campaign_id="test-camp",
+            slot_id="P01",
+            campaign_attempt_id="test-camp-P01-001",
+            payload={
+                "attempt": {
+                    "campaign_id": "test-camp",
+                    "slot_id": "P01",
+                    "campaign_attempt_id": "test-camp-P01-001",
+                    "attempt_number": 1,
+                    "slot_type": "PRIMARY",
+                    "requested_duration_seconds": 1800,
+                    "attempt_status": AttemptStatus.REJECTED.value,
+                    "inclusion_status": InclusionStatus.EXCLUDED.value,
+                    "exclusion_reason": "fail",
+                    "attempt_runtime_git_commit": "abcdef1",
+                    "planned_start_utc": now.isoformat(),
+                    "planned_start_local": "2026-08-01 09:30:00",
+                    "time_bucket": TimeBucket.MORNING.value,
+                    "paired_overlap_seconds": "0.0",
+                    "validated_pair_manifest_id": "pair",
+                    "validated_pair_manifest_sha256": "sha",
+                    "coinbase_disposition": "ACCEPTED",
+                    "kraken_disposition": "ACCEPTED",
+                    "paired_disposition": "ACCEPTED",
+                    "coinbase_archive_valid": True,
+                    "kraken_archive_valid": True,
+                    "coinbase_stop_reason": "REQUESTED_DURATION_REACHED",
+                    "kraken_stop_reason": "REQUESTED_DURATION_REACHED",
+                    "promotion_dry_run_allowed": True,
+                }
+            },
+        ),
+    ]
+    rebuilt_unsat = rebuild_registry_from_events(events_unsat)
+    assert rebuilt_unsat.completion_status == CompletionState.UNSATISFIED
+    assert rebuilt_unsat.campaign_status == CampaignStatus.IN_PROGRESS
+
+    # Test identical _registry_comparable behavior
+    from cross_venue.campaigns.registry import _registry_comparable
+
+    assert _registry_comparable(rebuilt) == _registry_comparable(rebuilt.model_copy())
