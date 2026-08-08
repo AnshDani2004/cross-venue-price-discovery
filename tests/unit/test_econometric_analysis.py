@@ -912,13 +912,17 @@ def test_successful_rank_0_propagates_to_pd_rows(
     import polars as pl
 
     n_obs = 1000
+    rng = np.random.default_rng(20260808)
+    cb_mid = 100.0 + np.cumsum(rng.normal(0.0, 0.05, n_obs))
+    kr_mid = 100.1 + np.cumsum(rng.normal(0.0, 0.05, n_obs))
+
     df_sync = pl.DataFrame(
         {
             "campaign_attempt_id": ["btc-usd-c-k-att-001"] * n_obs,
             "anchor_timestamp_utc": [1000000000000000 + i * 100000000 for i in range(n_obs)],
             "is_rejected": [False] * n_obs,
-            "cb_mid": [100.0 + (i % 2) for i in range(n_obs)],
-            "kr_mid": [100.1 + (i % 2) for i in range(n_obs)],
+            "cb_mid": cb_mid.tolist(),
+            "kr_mid": kr_mid.tolist(),
         }
     )
 
