@@ -710,8 +710,23 @@ def test_robustness_recompute(mock_dataset_root, mock_prelim_root, mock_derived_
     )
 
     rob = pl.read_parquet(next(iter(mock_derived_root.glob("*/robustness_results.parquet"))))
-    assert rob.height == 2  # baseline, horizon_250
-    assert "baseline" in rob["configuration_id"].to_list()
+
+    per_attempt = rob.filter(pl.col("scope") == "per_attempt")
+    aggregate = rob.filter(pl.col("scope") == "aggregate")
+
+    assert per_attempt.height == 2
+    assert aggregate.height == 2
+
+    assert set(per_attempt["configuration_id"].to_list()) == {
+        "baseline",
+        "horizon_250ms",
+    }
+    assert set(aggregate["configuration_id"].to_list()) == {
+        "baseline",
+        "horizon_250ms",
+    }
+
+    assert aggregate["campaign_attempt_id"].null_count() == aggregate.height
 
 
 # --- 13. Aggregation ---
@@ -2632,3 +2647,336 @@ def test_irf_evaluates_both_cholesky_orderings(
 
     assert ordering_counts.height == 2
     assert len(set(ordering_counts["len"].to_list())) == 1
+
+
+def test_configured_aggregate_robustness_scope_is_emitted(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """evaluate_aggregate_scope=true must produce aggregate robustness rows."""
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    robustness = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "robustness_results.parquet"
+    )
+
+    assert set(robustness["scope"].to_list()) == {
+        "per_attempt",
+        "aggregate",
+    }
+
+    per_attempt_ids = set(
+        robustness.filter(pl.col("scope") == "per_attempt")["configuration_id"].to_list()
+    )
+    aggregate_ids = set(
+        robustness.filter(pl.col("scope") == "aggregate")["configuration_id"].to_list()
+    )
+
+    assert aggregate_ids == per_attempt_ids
+
+    aggregate = robustness.filter(pl.col("scope") == "aggregate")
+
+    assert "contributing_attempt_count" in aggregate.columns
+    assert aggregate["campaign_attempt_id"].null_count() == aggregate.height
+
+
+def test_aggregate_robustness_uses_equal_attempt_weighting():
+    """Observation counts must not weight aggregate robustness values."""
+
+    import cross_venue.research.econometric_analysis as module
+
+    rows = [
+        {
+            "configuration_id": "baseline",
+            "scope": "per_attempt",
+            "campaign_attempt_id": "attempt-small",
+            "effective_sample_count": 300,
+            "metric": "VAR_STABILITY",
+            "value": 0.0,
+            "status": "COMPUTED",
+        },
+        {
+            "configuration_id": "baseline",
+            "scope": "per_attempt",
+            "campaign_attempt_id": "attempt-large",
+            "effective_sample_count": 30000,
+            "metric": "VAR_STABILITY",
+            "value": 1.0,
+            "status": "COMPUTED",
+        },
+    ]
+
+    assert hasattr(module, "_aggregate_robustness_rows")
+
+    aggregate = module._aggregate_robustness_rows(
+        rows,
+        evaluate_aggregate_scope=True,
+    )
+
+    assert len(aggregate) == 1
+
+    row = aggregate[0]
+
+    # Equal attempt weighting:
+    # (0 + 1) / 2 = 0.5.
+    #
+    # Observation weighting would be ~0.9901 and is forbidden.
+    assert row["value"] == pytest.approx(0.5)
+    assert row["contributing_attempt_count"] == 2
+    assert row["effective_sample_count"] is None
+    assert row["scope"] == "aggregate"
+    assert row["campaign_attempt_id"] is None
+
+
+def test_fisher_combines_attempt_p_values_without_observation_weights():
+    """Fisher combination treats each contributing attempt symmetrically."""
+
+    import cross_venue.research.econometric_analysis as module
+
+    assert hasattr(module, "_fisher_combine_p_values")
+
+    result = module._fisher_combine_p_values(
+        [0.01, 0.04],
+    )
+
+    # -2 * (log(0.01) + log(0.04))
+    assert result["statistic"] == pytest.approx(15.648092021712582)
+    assert result["degrees_of_freedom"] == 4
+    assert result["combined_p_value"] == pytest.approx(0.0035296184043425217)
+    assert result["contributing_attempt_count"] == 2
+    assert result["method"] == "fisher"
+
+
+def test_fisher_aggregate_inference_artifact_is_emitted(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Configured Fisher aggregation must be serialized separately."""
+
+    df = gen_series(100)
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    result_root = mock_derived_root / result.analysis_result_id
+    aggregate_path = result_root / "aggregate_inference.parquet"
+
+    assert aggregate_path.exists()
+
+    aggregate = pl.read_parquet(aggregate_path)
+
+    assert {
+        "analysis",
+        "specification_id",
+        "direction",
+        "scope",
+        "combination_method",
+        "p_value_source",
+        "contributing_attempt_count",
+        "fisher_statistic",
+        "degrees_of_freedom",
+        "combined_p_value",
+        "status",
+        "insufficiency_reason",
+    }.issubset(set(aggregate.columns))
+
+    assert set(aggregate["scope"].to_list()) == {
+        "aggregate",
+    }
+    assert set(aggregate["combination_method"].to_list()) == {"fisher"}
+    assert set(aggregate["p_value_source"].to_list()) == {"raw_p_value"}
+
+
+def test_aggregate_inference_separates_analysis_and_direction():
+    """Fisher aggregation must not mix analyses or directional hypotheses."""
+
+    import cross_venue.research.econometric_analysis as module
+
+    granger_rows = [
+        {
+            "campaign_attempt_id": "A",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.01,
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.04,
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "A",
+            "direction": "kraken_predicts_coinbase",
+            "raw_p_value": 0.50,
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "kraken_predicts_coinbase",
+            "raw_p_value": 0.80,
+            "model_validity_status": "COMPUTED",
+        },
+    ]
+
+    regression_rows = [
+        {
+            "campaign_attempt_id": "A",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.20,
+            "fit_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.30,
+            "fit_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "A",
+            "direction": "kraken_predicts_coinbase",
+            "raw_p_value": 0.005,
+            "fit_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "kraken_predicts_coinbase",
+            "raw_p_value": 0.02,
+            "fit_status": "COMPUTED",
+        },
+    ]
+
+    rows = module._build_aggregate_inference_rows(
+        granger_rows,
+        regression_rows,
+        method="fisher",
+    )
+
+    assert len(rows) == 4
+
+    keyed = {(row["analysis"], row["direction"]): row for row in rows}
+
+    assert set(keyed) == {
+        (
+            "granger_causality",
+            "coinbase_predicts_kraken",
+        ),
+        (
+            "granger_causality",
+            "kraken_predicts_coinbase",
+        ),
+        (
+            "predictive_regression",
+            "coinbase_predicts_kraken",
+        ),
+        (
+            "predictive_regression",
+            "kraken_predicts_coinbase",
+        ),
+    }
+
+    expected = {
+        (
+            "granger_causality",
+            "coinbase_predicts_kraken",
+        ): module._fisher_combine_p_values([0.01, 0.04]),
+        (
+            "granger_causality",
+            "kraken_predicts_coinbase",
+        ): module._fisher_combine_p_values([0.50, 0.80]),
+        (
+            "predictive_regression",
+            "coinbase_predicts_kraken",
+        ): module._fisher_combine_p_values([0.20, 0.30]),
+        (
+            "predictive_regression",
+            "kraken_predicts_coinbase",
+        ): module._fisher_combine_p_values([0.005, 0.02]),
+    }
+
+    for key, expected_combined in expected.items():
+        row = keyed[key]
+        assert row["combined_p_value"] == pytest.approx(expected_combined["combined_p_value"])
+        assert row["fisher_statistic"] == pytest.approx(expected_combined["statistic"])
+        assert row["degrees_of_freedom"] == 4
+        assert row["contributing_attempt_count"] == 2
+        assert row["p_value_source"] == "raw_p_value"
+        assert row["status"] == "COMPUTED"
+
+
+def test_aggregate_inference_excludes_non_estimable_attempts():
+    """Missing or failed attempts must not be imputed into Fisher aggregation."""
+
+    import cross_venue.research.econometric_analysis as module
+
+    granger_rows = [
+        {
+            "campaign_attempt_id": "A",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.02,
+            "model_validity_status": "COMPUTED",
+        },
+        {
+            "campaign_attempt_id": "B",
+            "direction": "coinbase_predicts_kraken",
+            "raw_p_value": 0.90,
+            "model_validity_status": "MODEL_INVALID",
+        },
+    ]
+
+    rows = module._build_aggregate_inference_rows(
+        granger_rows,
+        [],
+        method="fisher",
+    )
+
+    keyed = {(row["analysis"], row["direction"]): row for row in rows}
+
+    computed = keyed[
+        (
+            "granger_causality",
+            "coinbase_predicts_kraken",
+        )
+    ]
+
+    assert computed["contributing_attempt_count"] == 1
+    assert computed["degrees_of_freedom"] == 2
+    assert computed["combined_p_value"] == pytest.approx(0.02)
+    assert computed["status"] == "COMPUTED"
+
+    missing = keyed[
+        (
+            "granger_causality",
+            "kraken_predicts_coinbase",
+        )
+    ]
+
+    assert missing["contributing_attempt_count"] == 0
+    assert missing["fisher_statistic"] is None
+    assert missing["degrees_of_freedom"] is None
+    assert missing["combined_p_value"] is None
+    assert missing["status"] == "NOT_ESTIMABLE"

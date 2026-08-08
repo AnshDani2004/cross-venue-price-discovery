@@ -81,6 +81,44 @@ This policy does not alter the frozen sampling intervals, return horizons,
 gap threshold, minimum observation threshold, lag-selection rules, or
 statistical significance thresholds.
 
+### Inference aggregation and multiple-testing policy
+
+The frozen Phase 4C multiple-testing family is interpreted as the
+direction-by-attempt hypothesis family within each specification. Because
+the confirmatory Granger analysis is currently produced for the baseline
+specification, the existing Benjamini-Hochberg correction across all
+baseline direction-by-attempt Granger hypotheses is retained unchanged.
+
+The frozen aggregation rule requires Fisher combined p-values across
+attempts. Aggregate inference is therefore reported separately from
+per-attempt inference in `aggregate_inference.parquet`.
+
+Fisher combination uses raw attempt-level p-values, not
+Benjamini-Hochberg-adjusted p-values. Aggregation is performed separately
+for each analysis and direction:
+
+- Granger causality, Coinbase predicts Kraken.
+- Granger causality, Kraken predicts Coinbase.
+- Predictive regression, Coinbase predicts Kraken.
+- Predictive regression, Kraken predicts Coinbase.
+
+Only estimable attempt-level results contribute to Fisher aggregation.
+Failed or non-estimable attempts are excluded rather than imputed.
+Each contributing attempt enters Fisher's statistic once; observation
+counts do not weight the combined p-value.
+
+Configured aggregate robustness is reported in
+`robustness_results.parquet` using `scope = "aggregate"`. Numeric
+robustness values use arithmetic equal-attempt weighting across estimable
+attempts. Per-attempt observation counts do not influence this aggregate.
+The number of contributing attempts is stored separately as
+`contributing_attempt_count`; `effective_sample_count` remains reserved
+for observation counts and is null at aggregate scope.
+
+This repair does not alter the frozen significance level, multiple-testing
+method, family definition, robustness configurations, model estimators,
+or minimum observation threshold.
+
 ### VAR and impulse-response ordering policy
 
 Phase 4C treats variable ordering as a model specification rather than

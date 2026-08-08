@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 import statsmodels.api as sm  # type: ignore
+from scipy.stats import chi2  # type: ignore
 from statsmodels.stats.multitest import multipletests  # type: ignore
 from statsmodels.tsa.api import VAR  # type: ignore
 from statsmodels.tsa.stattools import adfuller  # type: ignore
@@ -277,6 +278,186 @@ def _longest_contiguous_level_slice(
         best_end = current_end
 
     return slice(best_start, best_end)
+
+
+def _fisher_combine_p_values(p_values: list[float]) -> dict[str, Any]:
+    """Combine independent attempt-level raw p-values using Fisher's method."""
+
+    values = np.asarray(p_values, dtype=float)
+
+    if values.size == 0:
+        return {
+            "statistic": None,
+            "degrees_of_freedom": None,
+            "combined_p_value": None,
+            "contributing_attempt_count": 0,
+            "method": "fisher",
+        }
+
+    if not np.all(np.isfinite(values)):
+        raise ValueError("Fisher p-values must be finite")
+
+    if np.any(values < 0.0) or np.any(values > 1.0):
+        raise ValueError("Fisher p-values must lie in [0, 1]")
+
+    if np.any(values == 0.0):
+        statistic = float("inf")
+        combined_p_value = 0.0
+    else:
+        statistic = float(-2.0 * np.sum(np.log(values)))
+        degrees_of_freedom = int(2 * values.size)
+        combined_p_value = float(chi2.sf(statistic, degrees_of_freedom))
+
+    return {
+        "statistic": statistic,
+        "degrees_of_freedom": int(2 * values.size),
+        "combined_p_value": combined_p_value,
+        "contributing_attempt_count": int(values.size),
+        "method": "fisher",
+    }
+
+
+def _aggregate_robustness_rows(
+    rows: list[dict[str, Any]],
+    *,
+    evaluate_aggregate_scope: bool,
+) -> list[dict[str, Any]]:
+    """Aggregate robustness metrics with equal weight per estimable attempt."""
+
+    if not evaluate_aggregate_scope:
+        return []
+
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    for row in rows:
+        if row.get("scope") != "per_attempt":
+            continue
+
+        key = (
+            str(row.get("configuration_id")),
+            str(row.get("metric")),
+        )
+        grouped.setdefault(key, []).append(row)
+
+    aggregate_rows: list[dict[str, Any]] = []
+
+    for key in sorted(grouped):
+        configuration_id, metric = key
+        group = grouped[key]
+        template = group[0]
+
+        estimable = [
+            row
+            for row in group
+            if row.get("status") == "COMPUTED"
+            and row.get("value") is not None
+            and np.isfinite(float(row["value"]))
+        ]
+
+        if estimable:
+            value = float(np.mean([float(row["value"]) for row in estimable]))
+            status = "COMPUTED"
+            insufficiency_reason = None
+        else:
+            value = None
+            status = "NOT_ESTIMABLE"
+            insufficiency_reason = "No estimable attempts"
+
+        aggregate_rows.append(
+            {
+                "configuration_id": configuration_id,
+                "scope": "aggregate",
+                "campaign_attempt_id": None,
+                "sampling_interval_ms": template.get("sampling_interval_ms"),
+                "return_horizon_ms": template.get("return_horizon_ms"),
+                "max_var_lag": template.get("max_var_lag"),
+                "trim_policy": template.get("trim_policy"),
+                "ordering": template.get("ordering"),
+                # Observation counts are a per-attempt concept.
+                "effective_sample_count": None,
+                "contributing_attempt_count": len(estimable),
+                "metric": metric,
+                "value": value,
+                "status": status,
+                "insufficiency_reason": insufficiency_reason,
+            }
+        )
+
+    return aggregate_rows
+
+
+def _build_aggregate_inference_rows(
+    granger_rows: list[dict[str, Any]],
+    regression_rows: list[dict[str, Any]],
+    *,
+    method: str,
+) -> list[dict[str, Any]]:
+    """Build aggregate inference separately by analysis and direction."""
+
+    if method != "fisher":
+        raise ResearchError(f"Unsupported combined p-value method: {method}")
+
+    analyses = (
+        (
+            "granger_causality",
+            granger_rows,
+            "model_validity_status",
+        ),
+        (
+            "predictive_regression",
+            regression_rows,
+            "fit_status",
+        ),
+    )
+
+    directions = (
+        "coinbase_predicts_kraken",
+        "kraken_predicts_coinbase",
+    )
+
+    output: list[dict[str, Any]] = []
+
+    for analysis, rows, status_field in analyses:
+        for direction in directions:
+            eligible = [
+                row
+                for row in rows
+                if row.get("direction") == direction
+                and row.get(status_field) == "COMPUTED"
+                and row.get("raw_p_value") is not None
+                and np.isfinite(float(row["raw_p_value"]))
+                and 0.0 <= float(row["raw_p_value"]) <= 1.0
+            ]
+
+            p_values = [float(row["raw_p_value"]) for row in eligible]
+
+            combined = _fisher_combine_p_values(p_values)
+
+            if p_values:
+                status = "COMPUTED"
+                reason = None
+            else:
+                status = "NOT_ESTIMABLE"
+                reason = "No estimable attempt p-values"
+
+            output.append(
+                {
+                    "analysis": analysis,
+                    "specification_id": "baseline",
+                    "direction": direction,
+                    "scope": "aggregate",
+                    "combination_method": method,
+                    "p_value_source": "raw_p_value",
+                    "contributing_attempt_count": combined["contributing_attempt_count"],
+                    "fisher_statistic": combined["statistic"],
+                    "degrees_of_freedom": combined["degrees_of_freedom"],
+                    "combined_p_value": combined["combined_p_value"],
+                    "status": status,
+                    "insufficiency_reason": reason,
+                }
+            )
+
+    return output
 
 
 def analyze_econometric_price_discovery(
@@ -1279,6 +1460,32 @@ def analyze_econometric_price_discovery(
             r["multiple_testing_method"] = "fdr_bh"
             r["multiple_testing_family_id"] = "direction_and_attempt_per_specification"
 
+    # Preserve the meaning of effective_sample_count as an
+    # observation count. Aggregate robustness records the number
+    # of contributing attempts in a separate field.
+    for row in robustness_rows:
+        row.setdefault("contributing_attempt_count", None)
+
+    aggregate_robustness_rows = _aggregate_robustness_rows(
+        robustness_rows,
+        evaluate_aggregate_scope=bool(
+            config.get("robustness_design", {}).get(
+                "evaluate_aggregate_scope",
+                False,
+            )
+        ),
+    )
+    robustness_rows.extend(aggregate_robustness_rows)
+
+    aggregate_inference_rows = _build_aggregate_inference_rows(
+        granger_rows,
+        reg_rows,
+        method=config.get("aggregation", {}).get(
+            "combined_p_value_method",
+            "fisher",
+        ),
+    )
+
     schema_map = {
         "series_diagnostics.parquet": pl.DataFrame(
             series_diag_rows if series_diag_rows else [{"campaign_attempt_id": ""}],
@@ -1381,19 +1588,53 @@ def analyze_econometric_price_discovery(
                 {
                     "configuration_id": "",
                     "scope": "",
-                    "campaign_attempt_id": "",
+                    "campaign_attempt_id": None,
                     "sampling_interval_ms": 0,
                     "return_horizon_ms": 0,
                     "max_var_lag": 0,
                     "trim_policy": "",
                     "ordering": "",
-                    "effective_sample_count": 0,
+                    "effective_sample_count": None,
+                    "contributing_attempt_count": None,
                     "metric": "",
-                    "value": 0.0,
+                    "value": None,
                     "status": "",
-                    "insufficiency_reason": "",
+                    "insufficiency_reason": None,
                 }
-            ]
+            ],
+            schema={
+                "configuration_id": pl.Utf8,
+                "scope": pl.Utf8,
+                "campaign_attempt_id": pl.Utf8,
+                "sampling_interval_ms": pl.Int64,
+                "return_horizon_ms": pl.Int64,
+                "max_var_lag": pl.Int64,
+                "trim_policy": pl.Utf8,
+                "ordering": pl.Utf8,
+                "effective_sample_count": pl.Int64,
+                "contributing_attempt_count": pl.Int64,
+                "metric": pl.Utf8,
+                "value": pl.Float64,
+                "status": pl.Utf8,
+                "insufficiency_reason": pl.Utf8,
+            },
+        ),
+        "aggregate_inference.parquet": pl.DataFrame(
+            aggregate_inference_rows,
+            schema={
+                "analysis": pl.Utf8,
+                "specification_id": pl.Utf8,
+                "direction": pl.Utf8,
+                "scope": pl.Utf8,
+                "combination_method": pl.Utf8,
+                "p_value_source": pl.Utf8,
+                "contributing_attempt_count": pl.Int64,
+                "fisher_statistic": pl.Float64,
+                "degrees_of_freedom": pl.Int64,
+                "combined_p_value": pl.Float64,
+                "status": pl.Utf8,
+                "insufficiency_reason": pl.Utf8,
+            },
         ),
     }
 
