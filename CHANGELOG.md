@@ -67,3 +67,6 @@
 - Recorded that accepted follow-up attempt F01 is not part of the immutable
   seven-attempt snapshot. Current collection progress is provisionally
   8 accepted attempts, leaving 2 additional accepted attempts required.
+- Add a separate supplemental exploratory intraday campaign plan plus a lineage-only
+  composite manifest handoff for combining accepted exploratory sessions without
+  rewriting source campaign ledgers.

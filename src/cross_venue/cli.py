@@ -422,6 +422,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
     )
+    composite = subparsers.add_parser(
+        "build-composite-exploratory-dataset",
+        help="build a lineage-only exploratory manifest from separate campaigns",
+    )
+    composite.add_argument(
+        "--campaign-id",
+        action="append",
+        required=True,
+        help="source campaign ID; repeat once per source campaign",
+    )
+    composite.add_argument("--output-path", type=Path, required=True)
+    composite.add_argument("--minimum-accepted-sessions", type=int, default=10)
+    composite.add_argument("--minimum-overlap-seconds", type=float, default=18_000)
     migrate = subparsers.add_parser(
         "migrate-campaign-runtime",
         help="append a controlled pre-collection campaign runtime migration",
@@ -965,6 +978,28 @@ def main(
             print(f"Campaign finalization failed: {exc}")
             return 1
         print(json_dumps({"manifest": manifest.model_dump(mode="json"), "path": str(path)}))
+        return 0
+    if args.command == "build-composite-exploratory-dataset":
+        from cross_venue.campaigns.composite import build_composite_exploratory_dataset
+        from cross_venue.campaigns.config import load_campaign_config_for_id
+        from cross_venue.campaigns.exceptions import CampaignError
+
+        try:
+            campaign_configs = tuple(
+                load_campaign_config_for_id(campaign_id) for campaign_id in args.campaign_id
+            )
+            composite_manifest, path = build_composite_exploratory_dataset(
+                campaign_configs,
+                output_path=args.output_path,
+                accepted_session_count_requirement=args.minimum_accepted_sessions,
+                accepted_overlap_seconds_requirement=args.minimum_overlap_seconds,
+            )
+        except CampaignError as exc:
+            print(f"Composite exploratory dataset failed: {exc}")
+            return 1
+        print(
+            json_dumps({"manifest": composite_manifest.model_dump(mode="json"), "path": str(path)})
+        )
         return 0
     if args.command == "migrate-campaign-runtime":
         from cross_venue.campaigns.config import load_campaign_config_for_id
