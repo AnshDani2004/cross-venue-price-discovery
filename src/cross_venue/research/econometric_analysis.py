@@ -58,6 +58,39 @@ def compute_code_fingerprint() -> str:
     return _hash_file(Path(__file__))
 
 
+def _parse_adf_maxlag(value: Any) -> int | None:
+    """Parse the configured ADF maximum lag.
+
+    The frozen Phase 4C configuration uses values such as "12ic":
+    the numeric prefix is the maximum lag, while lag selection within
+    that bound is controlled separately by ``adf_autolag``.
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+
+        if normalized.endswith("ic"):
+            normalized = normalized[:-2]
+
+        try:
+            parsed = int(normalized)
+        except ValueError as exc:
+            raise ResearchError(f"Invalid stationarity.adf_maxlag: {value!r}") from exc
+
+        if parsed < 0:
+            raise ResearchError("stationarity.adf_maxlag must be non-negative.")
+
+        return parsed
+
+    raise ResearchError(f"Invalid stationarity.adf_maxlag type: {type(value).__name__}")
+
+
 def _schema_fingerprint(df: pl.DataFrame) -> str:
     schema_str = ",".join(f"{col}:{dtype}" for col, dtype in df.schema.items())
     h = hashlib.sha256()
@@ -491,7 +524,9 @@ def analyze_econometric_price_discovery(
                 for name, series in [("coinbase_return", cb_ret_c), ("kraken_return", kr_ret_c)]:
                     try:
                         res = adfuller(
-                            series, maxlag=config["var_specification"]["max_var_lag"], autolag="AIC"
+                            series,
+                            maxlag=_parse_adf_maxlag(config["stationarity"]["adf_maxlag"]),
+                            autolag=config["stationarity"]["adf_autolag"],
                         )
                         stat_diag_rows.append(
                             {
@@ -670,8 +705,13 @@ def analyze_econometric_price_discovery(
             level_data = np.column_stack((log_cb[c_mask], log_kr[c_mask]))
 
             try:
-                k_diff = max(0, sel_lag - 1)
-                j_res = coint_johansen(level_data, det_order=0, k_ar_diff=k_diff)
+                det_order = int(config["cointegration"]["johansen_det_order"])
+                k_diff = int(config["cointegration"]["johansen_k_ar_diff"])
+                j_res = coint_johansen(
+                    level_data,
+                    det_order=det_order,
+                    k_ar_diff=k_diff,
+                )
                 trace_stat = j_res.lr1
                 crit_vals = j_res.cvt[:, 1]
 

@@ -1312,3 +1312,149 @@ def test_no_additional_trim_uses_untrimmed_support(
     # Untrimmed support contains 36 observations, therefore 35
     # exact one-step 100 ms return pairs.
     assert set(rows["effective_sample_count"].to_list()) == {35}
+
+
+def test_adf_consumes_stationarity_configuration(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """ADF max lag and autolag must come from [stationarity], not VAR config."""
+
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        'adf_maxlag = "12ic"',
+        'adf_maxlag = "7ic"',
+        1,
+    )
+    config_text = config_text.replace(
+        'adf_autolag = "AIC"',
+        'adf_autolag = "BIC"',
+        1,
+    )
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = gen_series(100)
+    df.write_parquet(
+        mock_prelim_root / "synchronized_observations.parquet"
+    )
+    write_manifest(mock_prelim_root)
+
+    calls = []
+
+    def fake_adfuller(series, *args, **kwargs):
+        calls.append(kwargs.copy())
+        return (
+            -4.0,
+            0.01,
+            3,
+            len(series) - 4,
+            {
+                "1%": -3.5,
+                "5%": -2.9,
+                "10%": -2.6,
+            },
+            -100.0,
+        )
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.adfuller",
+        fake_adfuller,
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root
+        / "validation"
+        / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(calls) == 2
+
+    for call in calls:
+        assert call["maxlag"] == 7
+        assert call["autolag"] == "BIC"
+
+
+def test_johansen_consumes_cointegration_configuration(
+    monkeypatch,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Johansen det_order and k_ar_diff must come directly from [cointegration]."""
+
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        "johansen_det_order = 0",
+        "johansen_det_order = -1",
+        1,
+    )
+    config_text = config_text.replace(
+        "johansen_k_ar_diff = 1",
+        "johansen_k_ar_diff = 7",
+        1,
+    )
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    df = gen_series(100)
+    df.write_parquet(
+        mock_prelim_root / "synchronized_observations.parquet"
+    )
+    write_manifest(mock_prelim_root)
+
+    calls = []
+
+    class FakeJohansenResult:
+        def __init__(self):
+            # Force inferred rank 0 so downstream GG/Hasbrouck
+            # scaffolding is not involved in this configuration test.
+            self.lr1 = np.array([1.0, 0.5])
+            self.cvt = np.array(
+                [
+                    [10.0, 15.0, 20.0],
+                    [3.0, 4.0, 5.0],
+                ]
+            )
+            self.evec = np.eye(2)
+
+    def fake_coint_johansen(endog, *args, **kwargs):
+        calls.append(kwargs.copy())
+        return FakeJohansenResult()
+
+    monkeypatch.setattr(
+        "cross_venue.research.econometric_analysis.coint_johansen",
+        fake_coint_johansen,
+    )
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root
+        / "validation"
+        / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["det_order"] == -1
+    assert calls[0]["k_ar_diff"] == 7
