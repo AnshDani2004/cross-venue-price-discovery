@@ -515,9 +515,40 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=["development", "final", "DEVELOPMENT", "FINAL"],
     )
+
     p.set_defaults(func=analyze_econometric_price_discovery_cmd)
 
+    render_parser = subparsers.add_parser(
+        "render-econometric-results", help="Render Phase 4D econometric results report"
+    )
+    render_parser.add_argument("--econometric-output-root", type=Path, required=True)
+    render_parser.add_argument("--output-root", type=Path, required=True)
+    render_parser.set_defaults(func=render_econometric_results_cmd)
+
     return parser
+
+
+def render_econometric_results_cmd(args: argparse.Namespace) -> int:
+    from cross_venue.research.econometric_reporting import render_econometric_results
+    from cross_venue.research.exceptions import ResearchError
+
+    try:
+        render_econometric_results(args.econometric_output_root, args.output_root)
+        manifest = json.loads((args.output_root / "reporting_manifest.json").read_text())
+        print(
+            json_dumps(
+                {
+                    "reporting_id": manifest["reporting_id"],
+                    "analysis_mode": manifest["analysis_mode"],
+                    "tables": len(manifest["generated_tables"]),
+                    "figures": len(manifest["generated_figures"]),
+                }
+            )
+        )
+        return 0
+    except (ResearchError, OSError, ValueError) as exc:
+        print(f"Phase 4D reporting failed: {exc}")
+        return 1
 
 
 def analyze_econometric_price_discovery_cmd(args: argparse.Namespace) -> int:
@@ -1097,6 +1128,10 @@ def main(
         }
         print(json_dumps(status))
         return 0
+
+    if args.command == "render-econometric-results":
+        ret = args.func(args)
+        return int(ret) if ret is not None else 0
 
     if args.command == "analyze-econometric-price-discovery":
         ret = args.func(args)
