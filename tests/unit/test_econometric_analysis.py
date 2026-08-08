@@ -3199,3 +3199,76 @@ def test_report_counts_aggregate_inference_rows(
 
     assert hasattr(result, "aggregate_inference_row_count")
     assert result.aggregate_inference_row_count == 4
+
+
+def test_var_stability_uses_statsmodels_inverse_root_convention_strictly():
+    """VAR stability must respect Statsmodels inverse-root semantics."""
+
+    from statsmodels.tsa.vector_ar import util
+    from statsmodels.tsa.vector_ar.var_model import is_stable
+
+    import cross_venue.research.econometric_analysis as module
+
+    assert hasattr(
+        module,
+        "_strict_var_stability_from_inverse_roots",
+    )
+
+    cases = {
+        "stable": np.array(
+            [
+                [
+                    [0.50, 0.00],
+                    [0.00, 0.25],
+                ]
+            ],
+            dtype=float,
+        ),
+        "unstable": np.array(
+            [
+                [
+                    [1.10, 0.00],
+                    [0.00, 0.25],
+                ]
+            ],
+            dtype=float,
+        ),
+        "unit_root_boundary": np.array(
+            [
+                [
+                    [1.00, 0.00],
+                    [0.00, 0.25],
+                ]
+            ],
+            dtype=float,
+        ),
+    }
+
+    results = {}
+
+    for name, coefs in cases.items():
+        companion = util.comp_matrix(coefs)
+        eigenvalues = np.linalg.eigvals(companion)
+        inverse_roots = eigenvalues**-1
+
+        results[name] = {
+            "statsmodels": bool(is_stable(coefs)),
+            "strict": module._strict_var_stability_from_inverse_roots(inverse_roots),
+        }
+
+    assert results["stable"] == {
+        "statsmodels": True,
+        "strict": True,
+    }
+    assert results["unstable"] == {
+        "statsmodels": False,
+        "strict": False,
+    }
+
+    # Statsmodels permits the exact companion-root boundary because its
+    # implementation uses <= 1. Phase 4C deliberately requires strict
+    # covariance-stationary stability, so an exact unit root is rejected.
+    assert results["unit_root_boundary"] == {
+        "statsmodels": True,
+        "strict": False,
+    }

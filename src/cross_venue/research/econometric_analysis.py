@@ -460,6 +460,34 @@ def _build_aggregate_inference_rows(
     return output
 
 
+def _strict_var_stability_from_inverse_roots(
+    inverse_roots: Any,
+) -> bool:
+    """Return strict VAR stability from Statsmodels inverse roots.
+
+    Statsmodels VARResults.roots exposes inverse companion-matrix
+    eigenvalues. Conventional VAR stability requires companion roots
+    strictly inside the unit circle, which is equivalent to all reported
+    inverse roots lying strictly outside the unit circle.
+
+    The strict boundary deliberately treats an exact unit root as
+    unstable, even though statsmodels.var_model.is_stable uses <= 1 for
+    companion eigenvalues.
+    """
+
+    roots = np.asarray(inverse_roots)
+
+    if roots.size == 0:
+        return False
+
+    magnitudes = np.abs(roots)
+
+    if not np.all(np.isfinite(magnitudes)):
+        return False
+
+    return bool(np.all(magnitudes > 1.0))
+
+
 def _compute_report_support_counts(
     *,
     stat_diag_rows: list[dict[str, Any]],
@@ -1096,10 +1124,7 @@ def analyze_econometric_price_discovery(
                     sel_lag = 1
                 res = model.fit(sel_lag)
 
-                is_stable = True
-                for r in res.roots:
-                    if abs(r) <= 1.0:
-                        is_stable = False
+                is_stable = _strict_var_stability_from_inverse_roots(res.roots)
 
                 if cfg_id == "baseline":
                     var_rows.append(

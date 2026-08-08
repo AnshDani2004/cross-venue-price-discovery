@@ -81,6 +81,34 @@ This policy does not alter the frozen sampling intervals, return horizons,
 gap threshold, minimum observation threshold, lag-selection rules, or
 statistical significance thresholds.
 
+### VAR stability root convention
+
+Phase 4C uses the conventional strict stability requirement that the
+eigenvalues of the VAR companion representation lie strictly inside the
+unit circle.
+
+Statsmodels `VARResults.roots` exposes inverse companion-matrix
+eigenvalues. Under that API convention, conventional strict VAR stability
+is therefore equivalent to requiring every reported root magnitude to be
+strictly greater than one.
+
+The production implementation uses this inverse-root form explicitly.
+This is equivalent to the conventional companion-root criterion for
+ordinary stable and unstable systems.
+
+Statsmodels 0.14.6 `is_stable` uses a non-strict companion-eigenvalue
+boundary of magnitude less than or equal to one. Phase 4C deliberately
+uses the strict covariance-stationary interpretation instead. An exact
+unit root is therefore classified as unstable.
+
+The frozen configuration phrase `all_roots_inside_unit_circle` refers to
+the conventional companion or characteristic-root representation. It
+must not be interpreted literally against the inverse roots returned by
+`VARResults.roots`.
+
+This clarification does not alter the previously implemented Phase 4C
+stability decision rule.
+
 ### Phase 4C report provenance and support-count policy
 
 Phase 4C report-level dataset quantities are propagated from canonical
