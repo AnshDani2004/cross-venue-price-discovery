@@ -1032,3 +1032,283 @@ def test_price_discovery_numerical_invariants(
     for row in pd_df.iter_rows(named=True):
         if True:
             assert row["status"] != "COMPUTED"
+
+
+def test_series_diagnostics_use_real_duration_and_longest_contiguous_segment(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """Diagnostics must describe actual timestamp continuity, not placeholders."""
+
+    # 20 observations. The 500 ms jumps occur on transitions into
+    # indices 5 and 15, producing contiguous blocks of 5, 10, and 5 rows.
+    df = gen_series(20, gap_indices=[5, 15])
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    diagnostics = pl.read_parquet(
+        next(iter(mock_derived_root.glob("*/series_diagnostics.parquet")))
+    )
+
+    row = diagnostics.row(0, named=True)
+
+    # First-to-last timestamp span:
+    # 17 ordinary 100 ms transitions + 2 gap transitions of 500 ms.
+    assert row["effective_duration"] == pytest.approx(2.7)
+
+    # Contiguous blocks contain 5, 10, and 5 observations, yielding
+    # 4, 9, and 4 valid one-step return pairs respectively.
+    assert row["longest_contiguous_segment"] == 9
+
+
+def test_multistep_return_rejects_any_gap_inside_horizon(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    """A multi-step return is invalid if any crossed interval is a gap."""
+
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        "return_horizon_ms = 100",
+        "return_horizon_ms = 300",
+        1,
+    )
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        'configuration_ids = ["baseline"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    # With 10 observations and a 300 ms horizon there are 7 candidate
+    # three-step returns. A gap on transition 3 -> 4 is crossed by the
+    # returns starting at indices 1, 2, and 3.
+    #
+    # Therefore 7 - 3 = 4 usable return pairs.
+    df = gen_series(10, gap_indices=[4])
+    df.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+    write_manifest(mock_prelim_root)
+
+    analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    diagnostics = pl.read_parquet(
+        next(iter(mock_derived_root.glob("*/series_diagnostics.parquet")))
+    )
+
+    row = diagnostics.row(0, named=True)
+
+    assert row["gap_count"] == 1
+    assert row["usable_return_pairs"] == 4
+
+
+def _exact_sync_grid(
+    *,
+    start_ns: int,
+    interval_ms: int,
+    count: int,
+    configuration_id: str | None = None,
+) -> pl.DataFrame:
+    """Deterministic synchronized grid for Phase 4C series-contract tests."""
+
+    timestamps = [start_ns + i * interval_ms * 1_000_000 for i in range(count)]
+
+    data = {
+        "campaign_attempt_id": ["A"] * count,
+        "anchor_timestamp_utc": timestamps,
+        "cb_mid": [100.0 + 0.01 * i + 0.00001 * i * i for i in range(count)],
+        "kr_mid": [100.2 + 0.008 * i + 0.000015 * i * i for i in range(count)],
+        "is_rejected": [False] * count,
+    }
+
+    if configuration_id is not None:
+        data["configuration_id"] = [configuration_id] * count
+
+    return pl.DataFrame(data)
+
+
+def _write_phase4c_support_fixture(
+    mock_prelim_root,
+) -> None:
+    """Write baseline plus exact 50 ms and untrimmed 100 ms support grids."""
+
+    from hashlib import sha256
+
+    start_ns = 1_000_000_000
+
+    # Trimmed baseline: t = 0 ... 3000 ms at 100 ms.
+    baseline = _exact_sync_grid(
+        start_ns=start_ns,
+        interval_ms=100,
+        count=31,
+    )
+    baseline.write_parquet(mock_prelim_root / "synchronized_observations.parquet")
+
+    # Same trimmed origin, exact 50 ms lattice through 3000 ms.
+    fast = _exact_sync_grid(
+        start_ns=start_ns,
+        interval_ms=50,
+        count=61,
+        configuration_id="faster_sampling",
+    )
+
+    # Untrimmed 100 ms support begins 500 ms earlier and ends at
+    # the same timestamp as the trimmed baseline.
+    no_trim = _exact_sync_grid(
+        start_ns=start_ns - 500_000_000,
+        interval_ms=100,
+        count=36,
+        configuration_id="no_trim",
+    )
+
+    support = pl.concat([fast, no_trim])
+    support_path = mock_prelim_root / "synchronization_support.parquet"
+    support.write_parquet(support_path)
+
+    support_hash = sha256(support_path.read_bytes()).hexdigest()
+
+    write_manifest(
+        mock_prelim_root,
+        extra=[
+            {
+                "relative_path": "synchronization_support.parquet",
+                "sha256": support_hash,
+            }
+        ],
+    )
+
+
+def _run_single_phase4c_robustness(
+    *,
+    configuration_id,
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    config_text = config_path.read_text()
+    config_text = config_text.replace(
+        'configuration_ids = ["baseline", "horizon_250ms"]',
+        f'configuration_ids = ["{configuration_id}"]',
+        1,
+    )
+    config_path.write_text(config_text)
+
+    _write_phase4c_support_fixture(mock_prelim_root)
+
+    result = analyze_econometric_price_discovery(
+        mock_dataset_root,
+        mock_dataset_root / "validation" / "normalized_dataset_validation.json",
+        mock_prelim_root,
+        config_path,
+        mock_derived_root,
+        AnalysisMode.DEVELOPMENT,
+    )
+
+    robustness = pl.read_parquet(
+        mock_derived_root / result.analysis_result_id / "robustness_results.parquet"
+    )
+
+    rows = robustness.filter(
+        (pl.col("scope") == "per_attempt") & (pl.col("configuration_id") == configuration_id)
+    )
+
+    assert rows.height >= 1
+
+    return rows
+
+
+def test_sampling_250ms_uses_exact_250ms_anchors_and_100ms_horizon(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    rows = _run_single_phase4c_robustness(
+        configuration_id="sampling_250ms",
+        mock_dataset_root=mock_dataset_root,
+        mock_prelim_root=mock_prelim_root,
+        mock_derived_root=mock_derived_root,
+        config_path=config_path,
+    )
+
+    # Exact 250 ms anchors from 0 through 3000 ms give 13 anchors.
+    # The final anchor has no +100 ms endpoint, leaving 12 returns.
+    assert set(rows["effective_sample_count"].to_list()) == {12}
+
+
+def test_sampling_500ms_does_not_classify_normal_500ms_spacing_as_gaps(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    rows = _run_single_phase4c_robustness(
+        configuration_id="sampling_500ms",
+        mock_dataset_root=mock_dataset_root,
+        mock_prelim_root=mock_prelim_root,
+        mock_derived_root=mock_derived_root,
+        config_path=config_path,
+    )
+
+    # Seven exact 500 ms anchors exist from 0 through 3000 ms.
+    # Six have an exact +100 ms endpoint.
+    assert set(rows["effective_sample_count"].to_list()) == {6}
+
+
+def test_horizon_250ms_uses_exact_250ms_endpoint(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    rows = _run_single_phase4c_robustness(
+        configuration_id="horizon_250ms",
+        mock_dataset_root=mock_dataset_root,
+        mock_prelim_root=mock_prelim_root,
+        mock_derived_root=mock_derived_root,
+        config_path=config_path,
+    )
+
+    # Baseline anchors are every 100 ms from 0 through 3000 ms.
+    # Anchors through 2700 ms have an exact +250 ms endpoint on
+    # the 50 ms support lattice: 28 valid returns.
+    assert set(rows["effective_sample_count"].to_list()) == {28}
+
+
+def test_no_additional_trim_uses_untrimmed_support(
+    mock_dataset_root,
+    mock_prelim_root,
+    mock_derived_root,
+    config_path,
+):
+    rows = _run_single_phase4c_robustness(
+        configuration_id="no_additional_trim",
+        mock_dataset_root=mock_dataset_root,
+        mock_prelim_root=mock_prelim_root,
+        mock_derived_root=mock_derived_root,
+        config_path=config_path,
+    )
+
+    # Untrimmed support contains 36 observations, therefore 35
+    # exact one-step 100 ms return pairs.
+    assert set(rows["effective_sample_count"].to_list()) == {35}

@@ -368,6 +368,7 @@ def analyze_preliminary_price_discovery(
     all_ll = []
     all_lead = []
     all_rob = []
+    all_sync_support = []
     all_spread_rows = []
 
     all_dates = set()
@@ -896,6 +897,11 @@ def analyze_preliminary_price_discovery(
                     enforce_freshness,
                 )
                 if rob_synced is not None:
+                    if rob_name in {"faster_sampling", "no_trim"}:
+                        all_sync_support.append(
+                            rob_synced.with_columns(pl.lit(rob_name).alias("configuration_id"))
+                        )
+
                     rob_acc = rob_synced.filter(~pl.col("is_rejected"))
                     rob_spread = _compute_spread(rob_acc["signed_spread"]).mean
                     all_rob.append(
@@ -931,6 +937,9 @@ def analyze_preliminary_price_discovery(
 
     if all_cv_dfs:
         write_p("synchronized_observations.parquet", all_cv_dfs)
+
+    if all_sync_support:
+        write_p("synchronization_support.parquet", all_sync_support)
 
     if all_desc:
         write_p("descriptive_statistics.parquet", all_desc)

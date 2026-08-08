@@ -156,6 +156,138 @@ def analyze_econometric_price_discovery(
 
     attempts = sorted(sync_df["campaign_attempt_id"].unique().to_list())
 
+    support_path = preliminary_result_root / "synchronization_support.parquet"
+    synchronization_support = pl.read_parquet(support_path) if support_path.exists() else None
+
+    def support_rows(
+        attempt_id: str,
+        configuration_id: str,
+    ) -> pl.DataFrame:
+        if synchronization_support is None:
+            return sync_df.head(0)
+
+        return synchronization_support.filter(
+            (pl.col("campaign_attempt_id") == attempt_id)
+            & (pl.col("configuration_id") == configuration_id)
+        ).sort("anchor_timestamp_utc")
+
+    def exact_lattice(
+        frame: pl.DataFrame,
+        interval_ms: int,
+    ) -> pl.DataFrame:
+        if frame.height == 0:
+            return frame
+
+        ordered = frame.sort("anchor_timestamp_utc")
+        origin = int(ordered["anchor_timestamp_utc"].cast(pl.Int64)[0])
+        interval_ns = interval_ms * 1_000_000
+
+        return ordered.filter(
+            ((pl.col("anchor_timestamp_utc").cast(pl.Int64) - origin) % interval_ns) == 0
+        )
+
+    def exact_log_returns(
+        anchors: pl.DataFrame,
+        endpoint_source: pl.DataFrame,
+        horizon_ms: int,
+        endpoint_interval_ms: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute returns using exact timestamp endpoints only."""
+
+        if anchors.height == 0 or endpoint_source.height == 0:
+            return (
+                np.full(anchors.height, np.nan, dtype=float),
+                np.full(anchors.height, np.nan, dtype=float),
+            )
+
+        if horizon_ms % endpoint_interval_ms != 0:
+            raise ResearchError(
+                "Return horizon is not representable on the synchronization support lattice."
+            )
+
+        anchors = anchors.sort("anchor_timestamp_utc")
+        endpoint_source = endpoint_source.sort("anchor_timestamp_utc")
+
+        anchor_ts = anchors["anchor_timestamp_utc"].cast(pl.Int64).to_numpy()
+        anchor_cb = anchors["cb_mid"].to_numpy()
+        anchor_kr = anchors["kr_mid"].to_numpy()
+
+        endpoint_ts = endpoint_source["anchor_timestamp_utc"].cast(pl.Int64).to_numpy()
+        endpoint_cb = endpoint_source["cb_mid"].to_numpy()
+        endpoint_kr = endpoint_source["kr_mid"].to_numpy()
+        endpoint_rejected = endpoint_source["is_rejected"].to_numpy()
+
+        index_by_timestamp = {int(timestamp): index for index, timestamp in enumerate(endpoint_ts)}
+
+        valid_support_timestamps = {
+            int(timestamp)
+            for timestamp, cb_mid, kr_mid, rejected in zip(
+                endpoint_ts,
+                endpoint_cb,
+                endpoint_kr,
+                endpoint_rejected,
+                strict=True,
+            )
+            if (
+                not rejected
+                and np.isfinite(cb_mid)
+                and np.isfinite(kr_mid)
+                and cb_mid > 0
+                and kr_mid > 0
+            )
+        }
+
+        cb_returns = np.full(
+            anchors.height,
+            np.nan,
+            dtype=float,
+        )
+        kr_returns = np.full(
+            anchors.height,
+            np.nan,
+            dtype=float,
+        )
+
+        horizon_ns = horizon_ms * 1_000_000
+        support_step_ns = endpoint_interval_ms * 1_000_000
+        support_steps = horizon_ms // endpoint_interval_ms
+
+        for i, timestamp in enumerate(anchor_ts):
+            start = int(timestamp)
+            target = start + horizon_ns
+
+            # Every synchronization state traversed by the return
+            # horizon must exist and be accepted.
+            traversed = (start + step * support_step_ns for step in range(support_steps + 1))
+            if not all(timestamp_ns in valid_support_timestamps for timestamp_ns in traversed):
+                continue
+
+            endpoint_index = index_by_timestamp.get(target)
+            if endpoint_index is None:
+                continue
+
+            cb_start = anchor_cb[i]
+            kr_start = anchor_kr[i]
+            cb_end = endpoint_cb[endpoint_index]
+            kr_end = endpoint_kr[endpoint_index]
+
+            if not (
+                np.isfinite(cb_start)
+                and np.isfinite(kr_start)
+                and np.isfinite(cb_end)
+                and np.isfinite(kr_end)
+                and cb_start > 0
+                and kr_start > 0
+                and cb_end > 0
+                and kr_end > 0
+            ):
+                continue
+
+            cb_returns[i] = np.log(cb_end) - np.log(cb_start)
+            kr_returns[i] = np.log(kr_end) - np.log(kr_start)
+
+        return cb_returns, kr_returns
+
     series_diag_rows = []
     stat_diag_rows = []
     var_rows = []
@@ -187,7 +319,45 @@ def analyze_econometric_price_discovery(
             eff_ordering = cfg_id
 
         for att in attempts:
-            adf = sync_df.filter(pl.col("campaign_attempt_id") == att).sort("anchor_timestamp_utc")
+            baseline_adf = sync_df.filter(pl.col("campaign_attempt_id") == att).sort(
+                "anchor_timestamp_utc"
+            )
+
+            adf = baseline_adf
+            endpoint_source = baseline_adf
+            endpoint_interval_ms = config["primary_specification"]["sampling_interval_ms"]
+
+            if cfg_id == "no_additional_trim":
+                adf = support_rows(att, "no_trim")
+                endpoint_source = adf
+                endpoint_interval_ms = 100
+
+            elif cfg_id.startswith("sampling_"):
+                fast_support = support_rows(
+                    att,
+                    "faster_sampling",
+                )
+                adf = exact_lattice(
+                    fast_support,
+                    eff_sampling,
+                )
+                endpoint_source = fast_support
+                endpoint_interval_ms = 50
+
+            elif cfg_id.startswith("horizon_"):
+                fast_support = support_rows(
+                    att,
+                    "faster_sampling",
+                )
+                if fast_support.height == 0:
+                    # An exact non-baseline horizon cannot be
+                    # reconstructed from the 100 ms baseline alone.
+                    adf = baseline_adf.head(0)
+                    endpoint_source = fast_support
+                else:
+                    endpoint_source = fast_support
+                    endpoint_interval_ms = 50
+
             acc = adf.filter(~pl.col("is_rejected"))
 
             if acc.height < 2:
@@ -230,39 +400,45 @@ def analyze_econometric_price_discovery(
                 )
                 continue
 
-            # Gap logic: Compute time diffs. If gap > 300ms, break series.
-            tstamps = acc["anchor_timestamp_utc"].cast(pl.Int64).to_numpy()  # ns
+            # Timestamp continuity is defined relative to the
+            # effective model-sampling interval. The historical
+            # baseline rule (>300 ms at 100 ms sampling) therefore
+            # generalizes to >3 sampling intervals.
+            tstamps = acc["anchor_timestamp_utc"].cast(pl.Int64).to_numpy()
 
-            step = max(1, eff_sampling // 100)
-
-            dt = np.diff(tstamps[::step]) / 1000000.0  # ms
-            gaps = dt > 300.0
+            dt = np.diff(tstamps) / 1_000_000.0
+            gap_threshold_ms = 3.0 * eff_sampling
+            gaps = dt > gap_threshold_ms
             gap_count = int(np.sum(gaps))
             max_gap = float(np.max(dt)) if len(dt) > 0 else 0.0
 
-            cb_mid = acc["cb_mid"].to_numpy()[::step]
-            kr_mid = acc["kr_mid"].to_numpy()[::step]
+            effective_duration = (
+                float((tstamps[-1] - tstamps[0]) / 1_000_000_000.0) if len(tstamps) >= 2 else 0.0
+            )
 
-            log_cb = np.log(cb_mid)
-            log_kr = np.log(kr_mid)
+            longest_contiguous_segment = 0
+            current_contiguous_segment = 0
+            for is_gap in gaps:
+                if is_gap:
+                    current_contiguous_segment = 0
+                else:
+                    current_contiguous_segment += 1
+                    longest_contiguous_segment = max(
+                        longest_contiguous_segment,
+                        current_contiguous_segment,
+                    )
 
-            # Simple approximation of returns for different horizons
-            ret_step = max(1, eff_horizon // eff_sampling)
+            log_cb = np.log(acc["cb_mid"].to_numpy())
+            log_kr = np.log(acc["kr_mid"].to_numpy())
 
-            cb_ret = log_cb[ret_step:] - log_cb[:-ret_step]
-            kr_ret = log_kr[ret_step:] - log_kr[:-ret_step]
+            cb_ret, kr_ret = exact_log_returns(
+                acc,
+                endpoint_source,
+                eff_horizon,
+                endpoint_interval_ms,
+            )
 
-            # For mask, if any gap occurred in the window, mask it
-            mask_gaps = np.zeros(len(cb_ret), dtype=bool)
-            if len(gaps) > 0 and len(mask_gaps) > 0:
-                min_len = min(len(gaps), len(mask_gaps))
-                mask_gaps[:min_len] = gaps[:min_len]
-
-            # Mask returns that cross a gap
-            cb_ret[mask_gaps] = np.nan
-            kr_ret[mask_gaps] = np.nan
-
-            valid_mask = ~np.isnan(cb_ret)
+            valid_mask = np.isfinite(cb_ret) & np.isfinite(kr_ret)
             usable = int(np.sum(valid_mask))
 
             status = "COMPUTED" if usable >= min_obs else "INSUFFICIENT_SAMPLE"
@@ -278,10 +454,10 @@ def analyze_econometric_price_discovery(
                         "usable_return_pairs": usable,
                         "gap_count": gap_count,
                         "maximum_gap": max_gap,
-                        "longest_contiguous_segment": usable,  # Simplification
+                        "longest_contiguous_segment": longest_contiguous_segment,
                         "series_start": str(acc["anchor_timestamp_utc"][0]),
                         "series_end": str(acc["anchor_timestamp_utc"][-1]),
-                        "effective_duration": 0.0,
+                        "effective_duration": effective_duration,
                         "missing_share": float(gap_count / len(dt)) if len(dt) > 0 else 0.0,
                         "status": status,
                         "insufficiency_reason": None if status == "COMPUTED" else "Below min obs",

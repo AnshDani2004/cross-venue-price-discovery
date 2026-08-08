@@ -621,3 +621,74 @@ def test_robustness_rows_are_emitted_for_every_attempt(
     counts = per_attempt.group_by("campaign_attempt_id").len().sort("campaign_attempt_id")
 
     assert counts["len"].to_list() == [9, 9]
+
+
+def test_phase4b_persists_econometric_synchronization_support(
+    mock_dataset_root: Path,
+    mock_derived_root: Path,
+) -> None:
+    """Phase 4B must persist exact grids required by downstream Phase 4C."""
+
+    val_path = (
+        mock_dataset_root
+        / "validation"
+        / "normalized_dataset_validation.json"
+    )
+
+    analyze_preliminary_price_discovery(
+        mock_dataset_root,
+        val_path,
+        mock_derived_root,
+    )
+
+    result_root = next(iter(mock_derived_root.glob("*")))
+    support_path = result_root / "synchronization_support.parquet"
+
+    assert support_path.exists()
+
+    support = pl.read_parquet(support_path)
+
+    assert set(support["configuration_id"].unique().to_list()) == {
+        "faster_sampling",
+        "no_trim",
+    }
+
+    fast = (
+        support
+        .filter(pl.col("configuration_id") == "faster_sampling")
+        .sort("anchor_timestamp_utc")
+    )
+    no_trim = (
+        support
+        .filter(pl.col("configuration_id") == "no_trim")
+        .sort("anchor_timestamp_utc")
+    )
+
+    assert fast.height > 1
+    assert no_trim.height > 1
+
+    fast_dt = (
+        fast["anchor_timestamp_utc"]
+        .diff()
+        .drop_nulls()
+        .dt.total_microseconds()
+        / 1000.0
+    )
+
+    no_trim_dt = (
+        no_trim["anchor_timestamp_utc"]
+        .diff()
+        .drop_nulls()
+        .dt.total_microseconds()
+        / 1000.0
+    )
+
+    assert set(fast_dt.unique().to_list()) == {50.0}
+    assert set(no_trim_dt.unique().to_list()) == {100.0}
+
+    assert fast["freshness_tolerance_enforced"].unique().to_list() == [False]
+    assert no_trim["freshness_tolerance_enforced"].unique().to_list() == [False]
+
+    # The untrimmed support must start earlier than the 300-second-trimmed
+    # 50 ms grid for the same attempt.
+    assert no_trim["anchor_timestamp_utc"].min() < fast["anchor_timestamp_utc"].min()
