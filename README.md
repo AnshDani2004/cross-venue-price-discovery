@@ -14,7 +14,9 @@ The study separates short-horizon directional predictability from long-run price
 
 ## Main finding
 
-Across 9 econometrically usable sessions, **Coinbase exhibits stronger and more persistent short-horizon price leadership over Kraken**. Kraken-to-Coinbase feedback appears in isolated periods, but the reverse-direction evidence is materially weaker in the one-step predictive regressions.
+Across 9 econometrically usable sessions, **Coinbase exhibits stronger and more persistent short-horizon price leadership over Kraken**. Coinbase returns Granger-predict Kraken returns in 6 of 9 sessions, against 1 of 9 in the reverse direction. These counts are after a Benjamini-Hochberg correction at a 5% false discovery rate applied jointly to all 18 session-by-direction tests (`results/final/csv/granger_results.csv`, columns `adjusted_p_value`, `decision`, `multiple_testing_method`). Before the correction the counts are 7 of 9 and 2 of 9 at raw p < 0.05; under a Holm or Bonferroni correction over the same 18 tests they stay 6 of 9 and 1 of 9 (audit recomputation from the committed raw p-values). Kraken-to-Coinbase feedback appears in isolated periods, but the reverse-direction evidence is materially weaker in the one-step predictive regressions.
+
+The one-step predictive regressions are weaker at the session level than the Granger tests: the Coinbase coefficient is positive in 8 of 9 sessions but individually significant (HAC p < 0.05) in only 2 of 9. The aggregate Fisher p-values are dominated by one session (`P10`, which has the longest contiguous sample, 7,831 returns); dropping it, the Coinbase-to-Kraken predictive-regression Fisher p-value is about 0.012 instead of 4.3e-16, and the Granger Fisher p-value is about 2e-70 instead of 1.4e-264 (audit recomputation from the committed per-session p-values).
 
 Long-run price-discovery leadership is more heterogeneous. Only 4 of the 9 usable sessions satisfy the frozen rank-one cointegration requirement for VECM-based Gonzalo-Granger and Hasbrouck analysis, and those sessions do not support a claim that Coinbase universally or permanently dominates price discovery.
 
@@ -65,7 +67,13 @@ The confirmatory dataset contains:
 * **18,528.188261 seconds** of empirical paired trade overlap
 * synchronized BTC/USD public market data from Coinbase and Kraken
 
-One accepted attempt is retained in the final dataset but fails the frozen minimum contiguous return-segment requirement for econometric estimation.
+**Source.** Public, unauthenticated WebSocket feeds collected by this repository's own collectors: Coinbase Exchange `matches` (trades) and `ticker` (best bid and offer), and Kraken v2 `trade` and `ticker` with `event_trigger=bbo` (`configs/venues.toml`). No vendor data is used.
+
+**Sessions.** Each attempt is a scheduled collection window of about 31 minutes (`requested_duration_seconds = 1860` in `configs/campaigns/`), so the 10 accepted attempts total about 5.2 hours of paired overlap. The scheduled windows fall between 2026-07-31 and 2026-08-08 (UTC); the exact date of the multi-day supplement attempt (`P05`) is not recorded in the committed outputs. Six of the nine usable sessions come from the first multi-day campaign (`...-2026-07-31-v1-*`); the other three are follow-up and supplement attempts. Five minutes are trimmed from each end of every window before synchronization.
+
+**What "econometrically usable" means.** Models are estimated on the single longest unbroken run of valid 100 ms returns in each session, so that lags never bridge a data gap. A return is valid only if both of its 100 ms endpoints are accepted grid points, and a grid point is rejected if either venue's latest quote is more than 2 seconds old, so the run ends at the first such stale point. A session is usable if that run has at least 300 returns (`minimum_effective_observations` in the frozen config). One accepted attempt (`P03`, the attempt in the seven-session snapshot that does not appear in the final nine) fails that rule. Before acceptance, one other attempt (`P08`) was quarantined by the data-quality policy and seven scheduled slots were missed and contributed no data (`docs/audits/phase_03c1_source_snapshot_report.md`).
+
+**Effective sample per session.** The contiguous estimation runs are short: 343 to 7,831 returns per session (about 34 seconds to 13 minutes of 100 ms data), 12,033 returns in total across the nine sessions (`effective_sample_count` in `results/final/csv/granger_results.csv`). The Granger and VAR results therefore rest on roughly 20 minutes of synchronized data, not on the full 5.2 hours of overlap.
 
 Raw market-data archives are intentionally not committed to Git. The repository contains the collection, archival, validation, normalization, and analysis code plus the compact FINAL result artifacts.
 
@@ -83,7 +91,7 @@ The project uses a staged research process:
    Accepted raw sessions are replayed into normalized analysis datasets with validation and provenance tracking.
 
 4. **Synchronization and preliminary analysis**
-   Cross-venue series are constructed with explicit timestamp discipline, staleness controls, gap handling, and no-lookahead checks.
+   Cross-venue series are constructed on a fixed 100 ms UTC grid with backward-only as-of joins (each grid point takes the latest quote at or before it, so no future quote can enter), staleness controls and gap handling.
 
 5. **Frozen econometric analysis**
    Session-level and aggregate inference is computed only after methodology and configuration are fixed.
@@ -98,9 +106,9 @@ The audit trail for these stages is preserved under [`docs/audits/`](docs/audits
 The final analysis includes:
 
 * Augmented Dickey-Fuller stationarity diagnostics
-* VAR lag selection using BIC with a frozen maximum lag
-* bidirectional Granger-causality tests
-* Benjamini-Hochberg multiple-testing correction
+* VAR lag selection using BIC with a frozen maximum lag of 10 grid steps (1 second); the selected lags were 1, 2 or 6 steps (100 ms, 200 ms or 600 ms)
+* bidirectional Granger-causality F-tests from the per-session VAR
+* Benjamini-Hochberg multiple-testing correction at alpha = 0.05 over one family of 18 tests (9 sessions by 2 directions)
 * one-step predictive regressions with HAC/Newey-West covariance
 * Fisher aggregation of raw per-attempt p-values
 * Johansen cointegration testing
@@ -126,7 +134,7 @@ Because only 4 sessions satisfy the rank-one requirement, the project treats lon
 
 The committed robustness artifact evaluates **VAR stability** across frozen alternative sampling, horizon, trimming, and ordering configurations.
 
-It should not be interpreted as a comprehensive robustness test of every substantive price-leadership conclusion. The project deliberately distinguishes model-stability checks from broader economic robustness claims.
+It should not be interpreted as a comprehensive robustness test of every substantive price-leadership conclusion. In particular, the Granger tests are run only on the 100 ms baseline; the 250 ms and 500 ms sampling and horizon variants record VAR stability, not Granger decisions, so the 6 of 9 count has not been checked at other grid sizes. The project deliberately distinguishes model-stability checks from broader economic robustness claims.
 
 ## Reproducibility
 
@@ -146,7 +154,7 @@ python -m ruff check .
 python -m pytest -q tests/unit
 ```
 
-The consolidated repository currently passes **481 unit tests**, with 3 additional local or live smoke tests skipped by default.
+At the release commit the unit suite reported **481 passing tests**, with 3 additional local or live smoke tests skipped by default. Many tests in `tests/unit/test_preliminary_analysis.py` only check that an output table exists and is non-empty; for example `test_no_lookahead_synchronization` does not itself test for lookahead. The no-lookahead property comes from the backward-only as-of join in `src/cross_venue/research/preliminary_analysis.py` (the two `join_asof(..., strategy="backward")` calls), not from that test.
 
 Common project checks are also available through:
 
@@ -199,7 +207,7 @@ The repository includes:
 * quality-policy calibration and acceptance gates
 * deterministic normalization
 * source snapshotting and provenance identifiers
-* no-lookahead synchronization checks
+* backward-only as-of synchronization (no future quotes by construction)
 * frozen analysis configuration
 * fail-closed FINAL reporting gates
 * deterministic artifact hashing
@@ -208,6 +216,14 @@ The repository includes:
 ## Limitations
 
 This is a finite-sample study of BTC/USD on two spot venues over a limited set of collection sessions.
+
+* **Small sample.** Nine usable sessions of about 31 minutes each, scheduled within roughly one week (2026-07-31 to 2026-08-08), and six of the nine from one campaign. Each session's models use only its longest unbroken run of 100 ms returns (343 to 7,831 returns, about 20 minutes in total), which by construction is an active stretch in which both venues updated their quotes at least every 2 seconds. Counts such as 6 of 9 are descriptive of these sessions and carry wide uncertainty; one session (`P10`) dominates the aggregate Fisher p-values.
+* **Venue clocks and timestamp latency.** Synchronization uses each venue's own exchange timestamp (`exchange_timestamp_utc`), not local receipt time, and no clock-offset correction is applied. The project's own quality diagnostics observed a stable exchange-clock offset that is not corrected (`docs/limitations.md`, Phase 2D.1). A cross-venue clock offset or a difference in how each venue stamps messages of a few tens of milliseconds is comparable to the 100 ms grid and could shift or create an apparent lead. This also departs from `docs/timestamp_policy.md`, which names local receipt time as the primary research clock.
+* **Asymmetric quote feeds.** Coinbase top of book comes from the `ticker` channel, which updates on trades (and batches cascading matches, `docs/data_sources.md`), while Kraken's `ticker` is subscribed with `event_trigger=bbo` and updates on best bid or offer changes. The two midquote series are therefore refreshed by different events, which can affect measured lead-lag.
+* **Granger is predictive, not causal.** A Granger rejection means past Coinbase returns improve the forecast of Kraken returns at 100 ms to 600 ms lags in that sample. It does not show that Coinbase trading causes Kraken prices to move, and both may respond to a third venue or to common news with different delays.
+* **Regime.** One week of summer 2026 BTC/USD; no claim is made about other volatility or liquidity regimes, other times of year, or later market structure. Long-run (VECM) measures are available for only 4 sessions and point in different directions (Coinbase-dominant Hasbrouck bounds in two, Kraken-dominant in one, bounds straddling one half in one).
+* **How "frozen" the analysis is.** The methodology file `configs/research/phase_04c_econometric_analysis.toml` was committed together with the analysis code (2026-08-07), after most sessions had been collected, not as a separate pre-registration. A first FINAL run was then invalidated for 15 implementation errors and re-run after repair (`docs/research/phase_04_finalization_repair.md`). The repair kept every threshold and specification unchanged, but the re-run was not blind to the first result.
+* **Single specification for the headline count.** The Granger tests use one frozen specification (100 ms grid, BIC lag selection up to 10 lags). They were not re-estimated under the alternative grids in the robustness design.
 
 The findings should not be generalized automatically to:
 
